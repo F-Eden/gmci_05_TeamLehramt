@@ -1,1 +1,100 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <title>Dozierenden-Übersicht</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      display: flex;
+      height: 100vh;
+    }
+    nav {
+      width: 150px;
+      background-color: #2c3e50; /* Dunkelblau wie auf Startseite */
+      border-right: 1px solid #34495e;
+      padding: 1rem;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    nav a {
+      color: white;
+      text-decoration: none;
+      padding: 0.8rem 1rem;
+      margin: 0.2rem 0;
+      border-radius: 4px;
+    }
+    nav a:hover {
+      background-color: #34495e;
+    }
 
+    nav a.active {
+      background-color: #f1c40f; /* gelb, aktive Farbe */
+      font-weight: bold;
+      color: black;
+    }
+
+    main {
+      flex-grow: 1;
+      padding: 1.5rem;
+      background-color: #ecf0f1;
+    }
+    .btn-new-session {
+      display: inline-block;
+      background-color: #27ae60;
+      color: white;
+      padding: 1rem 2rem;
+      font-size: 1.2rem;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      margin-bottom: 2rem;
+    }
+    .session-list {
+      background: white;
+      padding: 1rem;
+      border-radius: 8px;
+      box-shadow: 0 0 8px rgba(0,0,0,0.1);
+    }
+    .session-list h2 {
+      margin-top: 0;
+    }
+    .session-item {
+      padding: 0.5rem 0;
+      border-bottom: 1px solid #ddd;
+      cursor: pointer;
+    }
+    .session-item:last-child {
+      border-bottom: none;
+    }
+    .session-item:hover {
+      background-color: #dcedc8;
+    }
+  </style>
+</head>
+<body>
+
+  <nav>
+  <a href="index.html" class="active">Startseite</a>
+  <a href="newSession.html">Sessions </a>
+  <a href="#">Auswertung</a>
+  <a href="#">Profil</a>
+</nav>
+
+  <main>
+    <button class="btn-new-session">Eine neue Feedback Session erstellen</button>
+
+    <div class="session-list">
+      <h2>Bisherige Sessions</h2>
+      <div class="session-item">Session 1: Einführung in die Informatik</div>
+      <div class="session-item">Session 2: Fortgeschrittene Programmierung</div>
+      <div class="session-item">Session 3: Datenbanken</div>
+      <!-- Hier könnten später dynamisch Sessions aus CouchDB geladen werden -->
+    </div>
+  </main>
+
+</body>
+</html>
