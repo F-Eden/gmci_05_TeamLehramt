@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<title>Live Dashboard</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    max-width: 700px;
+    margin: 1rem auto;
+    padding: 1rem;
+  }
+  h1 {
+    text-align: center;
+  }
+  .question-list {
+    margin-top: 2rem;
+  }
+  .question-item {
+    background: #f8f9fa;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+  .question-text {
+    flex-grow: 1;
+  }
+  label {
+    cursor: pointer;
+  }
+  #statusMessage {
+    margin-top: 1rem;
+    font-weight: bold;
+  }
+</style>
+</head>
+<body>
+
+<h1>Live Dashboard</h1>
+
+<div id="sessionTitle"><em>Lädt …</em></div>
+<div class="question-list" id="questionList"></div>
+<div id="statusMessage"></div>
+
+<script>
+  const questionList = document.getElementById('questionList');
+  const sessionTitleDiv = document.getElementById('sessionTitle');
+  const statusMessage = document.getElementById('statusMessage');
+
+  let sessionDoc = null;  // Session-Dokument komplett inkl. _rev
+
+  // Helfer: ID aus URL auslesen (z.B. ?id=sess123)
+  function getSessionId() {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('id');
+  }
+
+  // Session vom CouchDB laden
+  async function loadSession() {
+    const sessionId = getSessionId();
+    if (!sessionId) {
+      alert('Keine Session-ID angegeben in URL.');
+      return;
+    }
+
+    try {
+      const res = await fetch(`http://localhost:5984/gmci/${encodeURIComponent(sessionId)}`);
+      if (!res.ok) throw new Error(`Session ${sessionId} nicht gefunden`);
+      sessionDoc = await res.json();
+
+      sessionTitleDiv.textContent = `Session: ${sessionDoc.title}`;
+      renderQuestions();
+    } catch (err) {
+      sessionTitleDiv.textContent = 'Fehler beim Laden der Session.';
+      console.error(err);
+    }
+  }
+
+  // Fragetest aus unlockedQuestions ziehen
+  function isQuestionUnlocked(qId) {
+    return Array.isArray(sessionDoc.unlockedQuestions) && sessionDoc.unlockedQuestions.includes(qId);
+  }
+
+  // Session in CouchDB speichern (mit aktuellster _rev)
+  async function saveSessionDoc() {
+    if (!sessionDoc || !sessionDoc._id) return;
+    try {
+      const res = await fetch(`http://localhost:5984/gmci/${encodeURIComponent(sessionDoc._id)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(sessionDoc)
+      });
+      if (!res.ok) {
+        const error = await res.json();
+        statusMessage.textContent = 'Fehler beim Speichern: ' + (error.reason || res.statusText);
+        return false;
+      }
+      const data = await res.json();
+      sessionDoc._rev = data.rev;
+      statusMessage.textContent = 'Speicherung erfolgreich ✔';
+      setTimeout(() => statusMessage.textContent = '', 3000);
+      return true;
+    } catch (e) {
+      statusMessage.textContent = 'Netzwerkfehler beim Speichern';
+      console.error(e);
+      return false;
+    }
+  }
+
+  // UI rendern: Fragen mit Checkboxen
+  function renderQuestions() {
+    questionList.innerHTML = '';
+
+    if (!Array.isArray(sessionDoc.questions) || sessionDoc.questions.length === 0) {
+      questionList.textContent = 'Keine Fragen vorhanden.';
+      return;
+    }
+
+    sessionDoc.questions.forEach(question => {
+      const div = document.createElement('div');
+      div.classList.add('question-item');
+
+      const label = document.createElement('label');
+      label.classList.add('question-text');
+      label.textContent = question.text;
+
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = isQuestionUnlocked(question.id);
+      checkbox.title = 'Frage freischalten/sperren';
+
+      checkbox.addEventListener('change', async () => {
+        statusMessage.textContent = 'Speichere Änderung...';
+        if (!Array.isArray(sessionDoc.unlockedQuestions)) {
+          sessionDoc.unlockedQuestions = [];
+        }
+        if (checkbox.checked) {
+          // Frage freischalten
+          if (!sessionDoc.unlockedQuestions.includes(question.id)) {
+            sessionDoc.unlockedQuestions.push(question.id);
+          }
+        } else {
+          // Frage sperren
+          sessionDoc.unlockedQuestions = sessionDoc.unlockedQuestions.filter(id => id !== question.id);
+        }
+
+        const success = await saveSessionDoc();
+        if (!success) {
+          // Falls Speichern fehlschlägt, Checkbox wieder zurücksetzen
+          checkbox.checked = !checkbox.checked;
+        }
+      });
+
+      div.appendChild(label);
+      div.appendChild(checkbox);
+      questionList.appendChild(div);
+    });
+  }
+
+  // Laden beim Start
+  loadSession();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <title>Sessions Übersicht</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      display: flex;
+      height: 100vh;
+    }
+    nav {
+      width: 150px;
+      background-color: #2c3e50;
+      border-right: 1px solid #34495e;
+      padding: 1rem;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+    }
+    nav a {
+      display: block;
+      padding: 0.75rem 1rem;
+      margin-bottom: 0.5rem;
+      color: white;
+      text-decoration: none;
+      border-radius: 4px;
+      transition: background-color 0.3s;
+    }
+    nav a:hover {
+      background-color: #34495e;
+    }
+    nav a.active {
+      background-color: #f1c40f;
+      font-weight: bold;
+      color: black;
+    }
+    main {
+      flex-grow: 1;
+      padding: 1.5rem;
+      box-sizing: border-box;
+      background-color: #fff;
+      overflow-y: auto;
+    }
+    h1 {
+      margin-top: 0;
+      margin-bottom: 1rem;
+    }
+    .btn-new-session {
+      display: inline-block;
+      background-color: #27ae60;
+      color: white;
+      padding: 1rem 2rem;
+      font-size: 1.2rem;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      margin-bottom: 1.5rem;
+    }
+    .session-list {
+      border-radius: 8px;
+      box-shadow: 0 0 8px rgba(0,0,0,0.1);
+      max-height: 75vh;
+      overflow-y: auto;
+      background: #ecf0f1;
+      padding: 1rem;
+    }
+    .session-item {
+      background: white;
+      padding: 0.7rem 1rem;
+      margin-bottom: 0.5rem;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: default;
+      transition: background-color 0.3s;
+      user-select: none;
+    }
+    .session-item:hover {
+      background-color: #dcedc8;
+    }
+    .icons {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .icon-button {
+      font-size: 1.3rem;
+      cursor: pointer;
+      user-select: none;
+      color: #34495e;
+      padding: 5px;
+      border-radius: 4px;
+      transition: background-color 0.2s, color 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+    }
+    .icon-button:hover {
+      background-color: #bdc3c7;
+      color: #2c3e50;
+    }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="index.html">Startseite</a>
+    <a href="sessions.html" class="active">Sessions</a>
+    <a href="auswertung.html">Auswertung</a>
+    <a href="profil.html">Profil</a>
+  </nav>
+
+  <main>
+    <h1>Alle Feedback Sessions</h1>
+    <button class="btn-new-session" onclick="window.location.href='newSession.html'">Eine neue Feedback Session erstellen</button>
+
+    <div class="session-list" id="sessionList">
+      <p>Lädt Sessions...</p>
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
+  <script>
+    const couchUrl = 'http://localhost:5984/gmci/_find';
+    const sessionList = document.getElementById('sessionList');
+
+    // QR-Code herunterladen Funktion
+    function downloadQRCode(data, fileName = 'qrcode.png') {
+      const tempCanvas = document.createElement('canvas');
+      QRCode.toCanvas(tempCanvas, data, {width: 200}, function (error) {
+        if (error) {
+          alert('QR-Code Generierung fehlgeschlagen.');
+          console.error(error);
+          return;
+        }
+        tempCanvas.toBlob(function (blob) {
+          const link = document.createElement('a');
+          link.href = URL.createObjectURL(blob);
+          link.download = fileName;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(link.href);
+        });
+      });
+    }
+
+    async function loadSessions() {
+      const query = {
+        selector: { type: "session" },
+        sort: [{ createdAt: "desc" }]
+      };
+
+      try {
+        const response = await fetch(couchUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(query)
+        });
+
+        const data = await response.json();
+
+        if (!data.docs || data.docs.length === 0) {
+          sessionList.innerHTML = '<p>Keine Sessions gefunden.</p>';
+          return;
+        }
+
+        sessionList.innerHTML = '';
+
+        data.docs.forEach(session => {
+          const div = document.createElement('div');
+          div.classList.add('session-item');
+
+          const titleSpan = document.createElement('span');
+          titleSpan.textContent = session.title + " (" + new Date(session.createdAt).toLocaleDateString() + ")";
+          titleSpan.style.flex = '1';
+          titleSpan.style.userSelect = 'none';
+
+          // Klick auf Titel = Bearbeiten
+          titleSpan.style.cursor = 'pointer';
+          titleSpan.title = 'Session bearbeiten';
+          titleSpan.addEventListener('click', () => {
+            window.location.href = `editSession.html?id=${encodeURIComponent(session._id)}`;
+          });
+
+          // Icons container
+          const iconsDiv = document.createElement('div');
+          iconsDiv.classList.add('icons');
+
+          // Play Icon (▶️) = Starten
+          const playIcon = document.createElement('span');
+          playIcon.classList.add('icon-button');
+          playIcon.title = 'Feedbackrunde starten';
+          playIcon.textContent = '▶️';
+          playIcon.addEventListener('click', () => {
+            const sessionIdEncoded = encodeURIComponent(session._id);
+
+            // Erstes Fenster öffnen (liveDashboard)
+            window.open(`liveDashboard.html?id=${sessionIdEncoded}`, '_blank');
+
+            // Zweites Fenster (Session_Stud) mit 500ms Verzögerung öffnen
+            setTimeout(() => {
+              window.open(`Session_Stud.html?id=${sessionIdEncoded}`, '_blank');
+            }, 5000);
+          });
+
+          // QR-Code Icon (📱) = QR-Code generieren und herunterladen
+          const qrIcon = document.createElement('span');
+          qrIcon.classList.add('icon-button');
+          qrIcon.title = 'QR-Code generieren und herunterladen';
+          qrIcon.textContent = '📱';
+          qrIcon.addEventListener('click', e => {
+            e.stopPropagation();
+            const url = `https://deineuniseite.edu/session/${encodeURIComponent(session._id)}`;
+            downloadQRCode(url, `${session.title}_qrcode.png`);
+          });
+
+          // Mülleimer Icon (🗑️) = Löschen
+          const deleteIcon = document.createElement('span');
+          deleteIcon.classList.add('icon-button');
+          deleteIcon.title = 'Session löschen';
+          deleteIcon.textContent = '🗑️';
+          deleteIcon.addEventListener('click', async e => {
+            e.stopPropagation();
+            if (confirm(`Möchtest du die Session "${session.title}" wirklich löschen?`)) {
+              try {
+                const docRes = await fetch(`http://localhost:5984/gmci/${encodeURIComponent(session._id)}`);
+                if (!docRes.ok) throw new Error('Session nicht gefunden');
+                const doc = await docRes.json();
+
+                const delRes = await fetch(`http://localhost:5984/gmci/${encodeURIComponent(session._id)}?rev=${doc._rev}`, {
+                  method: 'DELETE'
+                });
+
+                if (!delRes.ok) throw new Error('Löschen fehlgeschlagen');
+
+                alert('Session gelöscht!');
+                loadSessions();
+              } catch (err) {
+                alert('Fehler beim Löschen: ' + err.message);
+              }
+            }
+          });
+
+          // Icons hinzufügen in Reihenfolge: Play - QR - Müll
+          iconsDiv.appendChild(playIcon);
+          iconsDiv.appendChild(qrIcon);
+          iconsDiv.appendChild(deleteIcon);
+
+          div.appendChild(titleSpan);
+          div.appendChild(iconsDiv);
+          sessionList.appendChild(div);
+        });
+      } catch (error) {
+        sessionList.innerHTML = '<p>Fehler beim Laden der Sessions.</p>';
+        console.error('Fehler beim Laden der Sessions:', error);
+      }
+    }
+
+    window.addEventListener('load', loadSessions);
+  </script>
+</body>
+</html>

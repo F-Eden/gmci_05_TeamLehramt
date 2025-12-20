@@ -41,6 +41,7 @@
       flex-grow: 1;
       padding: 1.5rem;
       background-color: #ecf0f1;
+      overflow-y: auto;
     }
     .btn-new-session {
       display: inline-block;
@@ -58,6 +59,8 @@
       padding: 1rem;
       border-radius: 8px;
       box-shadow: 0 0 8px rgba(0,0,0,0.1);
+      max-height: 70vh;
+      overflow-y: auto;
     }
     .session-list h2 {
       margin-top: 0;
@@ -78,23 +81,68 @@
 <body>
 
   <nav>
-  <a href="index.html" class="active">Startseite</a>
-  <a href="newSession.html">Sessions </a>
-  <a href="#">Auswertung</a>
-  <a href="#">Profil</a>
-</nav>
+    <a href="index.html" class="active">Startseite</a>
+    <a href="sessions.html">Sessions</a>
+    <a href="#">Auswertung</a>
+    <a href="#">Profil</a>
+  </nav>
 
   <main>
-    <button class="btn-new-session">Eine neue Feedback Session erstellen</button>
+    <button class="btn-new-session" onclick="window.location.href='newSession.html'">Eine neue Feedback Session erstellen</button>
 
     <div class="session-list">
       <h2>Bisherige Sessions</h2>
-      <div class="session-item">Session 1: Einführung in die Informatik</div>
-      <div class="session-item">Session 2: Fortgeschrittene Programmierung</div>
-      <div class="session-item">Session 3: Datenbanken</div>
-      <!-- Hier könnten später dynamisch Sessions aus CouchDB geladen werden -->
+      <div id="sessionsContainer">
+        <!-- Dynamisch hier Sessions aus CouchDB geladen -->
+        <p>Lädt Sessions...</p>
+      </div>
     </div>
   </main>
 
+  <script>
+    const couchUrl = 'http://localhost:5984/gmci/_find';
+    const sessionsContainer = document.getElementById('sessionsContainer');
+
+    async function loadSessions() {
+      const query = {
+        selector: { type: "session" },
+        sort: [{ createdAt: "desc" }]
+      };
+
+      try {
+        const response = await fetch(couchUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(query)
+        });
+
+        const data = await response.json();
+
+        if (!data.docs || data.docs.length === 0) {
+          sessionsContainer.innerHTML = '<p>Keine Sessions gefunden.</p>';
+          return;
+        }
+
+        sessionsContainer.innerHTML = '';
+
+        data.docs.forEach(session => {
+          const div = document.createElement('div');
+          div.classList.add('session-item');
+          div.textContent = session.title + " (" + new Date(session.createdAt).toLocaleDateString() + ")";
+          div.addEventListener('click', () => {
+            // Leitet zur Bearbeitungsseite weiter mit Session-ID
+            window.location.href = `editSession.html?id=${encodeURIComponent(session._id)}`;
+          });
+          sessionsContainer.appendChild(div);
+        });
+      } catch (error) {
+        sessionsContainer.innerHTML = '<p>Fehler beim Laden der Sessions.</p>';
+        console.error('Fehler beim Laden der Sessions:', error);
+      }
+    }
+
+    window.addEventListener('load', loadSessions);
+  </script>
+  
 </body>
 </html>

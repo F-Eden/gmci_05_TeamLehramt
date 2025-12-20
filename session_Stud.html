@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <title>Session Feedback</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 600px;
+      margin: 2rem auto;
+      padding: 1rem;
+    }
+    h1 {
+      text-align: center;
+    }
+    .question {
+      background: #f4f6f7;
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+    .question label {
+      display: block;
+      font-weight: bold;
+      margin-bottom: 0.5rem;
+    }
+    select, input[type="radio"], textarea {
+      margin-top: 0.3rem;
+    }
+    textarea {
+      width: 100%;
+      height: 80px;
+      box-sizing: border-box;
+      resize: vertical;
+      padding: 0.5rem;
+    }
+    .submit-btn {
+      background-color: #27ae60;
+      color: white;
+      border: none;
+      padding: 0.7rem 2rem;
+      font-size: 1rem;
+      border-radius: 5px;
+      cursor: pointer;
+      display: block;
+      margin: 1rem auto;
+    }
+    .submit-btn:hover {
+      background-color: #219150;
+    }
+    .message {
+      text-align: center;
+      font-weight: bold;
+      margin-top: 1rem;
+      color: green;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Feedback zur Session</h1>
+  <form id="feedbackForm">
+    <div id="questionsContainer"></div>
+    <button type="submit" class="submit-btn">Feedback abschicken</button>
+  </form>
+
+  <div id="message" class="message"></div>
+
+  <script>
+    function getSessionId() {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('id');
+    }
+
+    async function loadSession(sessionId) {
+      try {
+        const res = await fetch(`http://localhost:5984/gmci/${encodeURIComponent(sessionId)}`);
+        if (!res.ok) throw new Error('Session nicht gefunden');
+        const session = await res.json();
+        return session;
+      } catch (err) {
+        alert('Fehler beim Laden der Session: ' + err.message);
+        throw err;
+      }
+    }
+
+    function createQuestionInput(question, qIndex) {
+      const container = document.createElement('div');
+      container.classList.add('question');
+
+      const label = document.createElement('label');
+      label.setAttribute('for', `q-${qIndex}`);
+      label.textContent = question.text;
+      container.appendChild(label);
+
+      let input;
+
+      if (question.type === 'stars') {
+        input = document.createElement('select');
+        input.name = `q-${qIndex}`;
+        input.id = `q-${qIndex}`;
+        input.required = true;
+        for (let i = 1; i <= 5; i++) {
+          const option = document.createElement('option');
+          option.value = i;
+          option.textContent = i;
+          input.appendChild(option);
+        }
+      } else if (question.type === 'emoji') {
+        input = document.createElement('div');
+        input.id = `q-${qIndex}`;
+        input.name = `q-${qIndex}`;
+        input.required = true;
+
+        const emojis = ['😞', '😐', '😀'];
+        emojis.forEach((emoji, idx) => {
+          const radioId = `q-${qIndex}-${idx}`;
+
+          const radio = document.createElement('input');
+          radio.type = 'radio';
+          radio.id = radioId;
+          radio.name = `q-${qIndex}`;
+          radio.value = emoji;
+          radio.required = true;
+
+          const labelRadio = document.createElement('label');
+          labelRadio.htmlFor = radioId;
+          labelRadio.textContent = emoji;
+          labelRadio.style.fontSize = '1.5rem';
+          labelRadio.style.marginRight = '1rem';
+          labelRadio.style.cursor = 'pointer';
+
+          input.appendChild(radio);
+          input.appendChild(labelRadio);
+        });
+      } else if (question.type === 'text') {
+        input = document.createElement('textarea');
+        input.id = `q-${qIndex}`;
+        input.name = `q-${qIndex}`;
+        input.rows = 4;
+        input.placeholder = 'Deine Antwort...';
+        input.required = true;
+      } else {
+        input = document.createElement('input');
+        input.type = 'text';
+        input.id = `q-${qIndex}`;
+        input.name = `q-${qIndex}`;
+        input.required = true;
+      }
+
+      container.appendChild(input);
+      return container;
+    }
+
+    async function init() {
+      const sessionId = getSessionId();
+      if (!sessionId) {
+        alert('Keine Session-ID angegeben!');
+        return;
+      }
+
+      const session = await loadSession(sessionId);
+
+      const unlockedIds = session.unlockedQuestions || [];
+
+      const questionsContainer = document.getElementById('questionsContainer');
+      questionsContainer.innerHTML = '';
+
+      session.questions.forEach((q, i) => {
+        if (unlockedIds.includes(q.id)) {
+          const questionInput = createQuestionInput(q, i);
+          questionsContainer.appendChild(questionInput);
+        }
+      });
+
+      if (questionsContainer.children.length === 0) {
+        questionsContainer.innerHTML = '<p>Zurzeit sind keine Fragen zum Feedback freigegeben.</p>';
+        document.querySelector('button[type=submit]').disabled = true;
+      }
+
+      // Event Listener Feedback absenden
+      document.getElementById('feedbackForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        const form = e.target;
+        const formData = new FormData(form);
+
+        let answers = {};
+        for (const [key, value] of formData.entries()) {
+          answers[key] = value;
+        }
+
+        const feedbackDoc = {
+          type: 'feedback',
+          sessionId: sessionId,
+          timestamp: new Date().toISOString(),
+          answers: answers
+        };
+
+        try {
+          const response = await fetch('http://localhost:5984/gmci', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(feedbackDoc)
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            alert('Fehler beim Absenden des Feedbacks: ' + (errorData.reason || response.statusText));
+            return;
+          }
+
+          document.getElementById('message').textContent = 'Danke für dein Feedback!';
+          document.getElementById('message').classList.remove('hidden');
+          form.reset();
+
+        } catch (err) {
+          alert('Fehler bei der Verbindung: ' + err.message);
+        }
+      });
+    }
+
+
+    async function refresh() {
+      const sessionId = getSessionId();
+      if (!sessionId) return;
+
+      try {
+        const session = await loadSession(sessionId);
+        const unlockedIds = session.unlockedQuestions || [];
+        const questionsContainer = document.getElementById('questionsContainer');
+        questionsContainer.innerHTML = '';
+
+        session.questions.forEach((q, i) => {
+          if (unlockedIds.includes(q.id)) {
+            const questionInput = createQuestionInput(q, i);
+            questionsContainer.appendChild(questionInput);
+          }
+        });
+
+        if (questionsContainer.children.length === 0) {
+          questionsContainer.innerHTML = '<p>Zurzeit sind keine Fragen zum Feedback freigegeben.</p>';
+          document.querySelector('button[type=submit]').disabled = true;
+        } else {
+          document.querySelector('button[type=submit]').disabled = false;
+        }
+      } catch (error) {
+        console.error("Fehler beim Aktualisieren: ", error);
+      }
+  }
+
+  function getSessionId() {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('id');
+  }
+
+  window.onload = () => {
+      refresh(); // Erstes Laden der Seite
+      setInterval(refresh, 5000); // Alle 5 Sekunden neu laden
+  };
+  </script>
+
+</body>
+</html>

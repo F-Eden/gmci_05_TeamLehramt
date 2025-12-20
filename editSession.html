@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8" />
-  <title>Neue Session erstellen</title>
+  <title>Session bearbeiten</title>
   <style>
     body {
       margin: 0;
@@ -103,36 +103,33 @@
       font-size: 1rem;
       line-height: 1;
     }
-    #qrCodeContainer {
-      margin-top: 1rem;
-    }
   </style>
 </head>
 <body>
   <nav>
     <a href="index.html">Startseite</a>
-    <a href="sessions.html" class="active">Sessions</a>
+    <a href="newSession.html">Sessions</a>
     <a href="auswertung.html">Auswertung</a>
     <a href="profil.html">Profil</a>
   </nav>
 
   <main>
-    <h1>Neue Session</h1>
+    <h1>Session bearbeiten</h1>
 
-    <form id="sessionForm">
+    <form id="editSessionForm">
       <label for="sessionTitle">Titel der Session:</label>
-      <input type="text" id="sessionTitle" name="sessionTitle" required />
+      <input type="text" id="sessionTitle" name="sessionTitle" disabled />
 
       <label>Fragen zur Session</label>
       <div id="questionsContainer" class="questions-container">
-        <!-- Fragen erscheinen hier -->
+        <!-- Fragen geladen und bearbeitbar hier -->
       </div>
 
       <button type="button" id="addQuestionBtn">Frage hinzufügen</button>
-      <button type="button" id="saveSessionBtn">Session speichern & QR-Code generieren</button>
+      <button type="button" id="saveSessionBtn">Speichern</button>
     </form>
 
-    <div id="qrCodeContainer"></div>
+    <div id="qrCodeContainer" style="margin-top: 1rem;"></div>
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
@@ -141,21 +138,20 @@
     const addQuestionBtn = document.getElementById('addQuestionBtn');
     const saveSessionBtn = document.getElementById('saveSessionBtn');
     const qrCodeContainer = document.getElementById('qrCodeContainer');
+    const titleInput = document.getElementById('sessionTitle');
 
-    let questionCount = 0;
-
-    // Slugify Titel → ID
-    function slugify(text) {
-      return text.toString().toLowerCase()
-        .trim()
-        .replace(/\s+/g, '-')      
-        .replace(/[^\w\-]+/g, '')  
-        .replace(/\-\-+/g, '-');   
+    // ID aus URL auslesen
+    function getSessionIdFromUrl() {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('id');
     }
 
-    function createQuestionElement() {
-      questionCount++;
-      const qId = 'q' + questionCount;
+    // Fragelement erzeugen (wie im newSession, hier mit vorherigen Werten)
+    function createQuestionElement(q = null) {
+      const qId = q?.id || ('q' + Date.now());
+      const text = q?.text || '';
+      const type = q?.type || '';
+
       const questionDiv = document.createElement('div');
       questionDiv.classList.add('question-item');
       questionDiv.setAttribute('data-qid', qId);
@@ -163,14 +159,14 @@
       questionDiv.innerHTML = `
         <button type="button" class="question-remove" title="Frage entfernen">&times;</button>
         <label for="${qId}_text">Frage:</label>
-        <input type="text" id="${qId}_text" name="${qId}_text" placeholder="Frage eingeben" required />
+        <input type="text" id="${qId}_text" name="${qId}_text" value="${text}" required />
         
         <label for="${qId}_type">Bewertungsart:</label>
         <select id="${qId}_type" name="${qId}_type" required>
-          <option value="" disabled selected>Bewertungsart wählen</option>
-          <option value="stars">Sternebewertung</option>
-          <option value="emoji">Emojis</option>
-          <option value="text">Freitext</option>
+          <option value="" disabled ${type === '' ? 'selected' : ''}>Bewertungsart wählen</option>
+          <option value="stars" ${type === 'stars' ? 'selected' : ''}>Sternebewertung</option>
+          <option value="emoji" ${type === 'emoji' ? 'selected' : ''}>Emojis</option>
+          <option value="text" ${type === 'text' ? 'selected' : ''}>Freitext</option>
         </select>
       `;
 
@@ -181,18 +177,58 @@
       return questionDiv;
     }
 
-    addQuestionBtn.addEventListener('click', () => {
-      const newQuestion = createQuestionElement();
-      questionsContainer.appendChild(newQuestion);
-    });
-
-    saveSessionBtn.addEventListener('click', async () => {
-      const title = document.getElementById('sessionTitle').value.trim();
-      if (!title) {
-        alert('Bitte gib einen Titel für die Session ein.');
+    // Session Daten laden
+    async function loadSession() {
+      const id = getSessionIdFromUrl();
+      if (!id) {
+        alert('Keine Session-ID angegeben.');
         return;
       }
 
+      const url = `http://localhost:5984/gmci/${encodeURIComponent(id)}`;
+
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('Session nicht gefunden');
+        const session = await res.json();
+
+        titleInput.value = session.title;
+
+        questionsContainer.innerHTML = '';
+        session.questions?.forEach(q => {
+          questionsContainer.appendChild(createQuestionElement(q));
+        });
+
+        // QR-Code anzeigen
+        qrCodeContainer.innerHTML = '';
+        const qrData = `https://deineuniseite.edu/session/${id}`;
+        QRCode.toCanvas(qrCodeContainer, qrData, { width: 200 }, err => {
+          if (err) console.error(err);
+        });
+      } catch (err) {
+        alert('Fehler beim Laden der Session: ' + err.message);
+      }
+    }
+
+    addQuestionBtn.addEventListener('click', () => {
+      questionsContainer.appendChild(createQuestionElement());
+    });
+
+    saveSessionBtn.addEventListener('click', async () => {
+      const id = getSessionIdFromUrl();
+      if (!id) {
+        alert('Keine Session-ID gefunden.');
+        return;
+      }
+
+      // Session Titel (nicht änderbar, nur für Referenz)
+      const title = titleInput.value.trim();
+      if (!title) {
+        alert('Session Titel ist ungültig.');
+        return;
+      }
+
+      // Fragen auslesen und validieren
       const questionDivs = questionsContainer.querySelectorAll('.question-item');
       if (questionDivs.length === 0) {
         alert('Bitte füge mindestens eine Frage hinzu.');
@@ -221,20 +257,6 @@
         });
       }
 
-      const id = slugify(title);
-      const couchUrl = `http://localhost:5984/gmci/${encodeURIComponent(id)}`;
-
-      try {
-        // Prüfen ob Session mit ID existiert
-        const headResponse = await fetch(couchUrl, { method: 'HEAD' });
-        if (headResponse.ok) {
-          alert('Eine Session mit diesem Titel existiert bereits! Bitte wähle einen anderen Namen.');
-          return;
-        }
-      } catch(e) {
-        console.warn('Fehler beim Prüfen der Session-ID', e);
-      }
-
       const sessionDoc = {
         _id: id,
         type: 'session',
@@ -243,31 +265,35 @@
         createdAt: new Date().toISOString()
       };
 
+      // Zum Update muss _rev gesetzt werden. Erst die aktuelle Session laden.
       try {
-        const putResponse = await fetch(couchUrl, {
+        const docRes = await fetch(`http://localhost:5984/gmci/${encodeURIComponent(id)}`);
+        if(!docRes.ok) throw new Error('Session nicht gefunden');
+        const doc = await docRes.json();
+
+        // _rev ermitteln und setzen
+        sessionDoc._rev = doc._rev;
+
+        // Update per PUT absenden
+        const putRes = await fetch(`http://localhost:5984/gmci/${encodeURIComponent(id)}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {'Content-Type': 'application/json'},
           body: JSON.stringify(sessionDoc)
         });
 
-        if (putResponse.ok) {
-          alert('Session erfolgreich gespeichert!');
-          const qrData = `https://deineuniseite.edu/session/${id}`;
-          qrCodeContainer.innerHTML = '';
-          QRCode.toCanvas(qrCodeContainer, qrData, { width: 200 }, err => {
-            if (err) console.error(err);
-          });
-          document.getElementById('sessionForm').reset();
-          questionsContainer.innerHTML = '';
-          questionCount = 0;
-        } else {
-          const errorData = await putResponse.json();
-          alert('Fehler beim Speichern: ' + (errorData.reason || putResponse.statusText));
+        if (!putRes.ok) {
+          const errorData = await putRes.json();
+          alert('Fehler beim Speichern: ' + (errorData.reason || putRes.statusText));
+          return;
         }
+
+        alert('Session erfolgreich aktualisiert!');
       } catch (err) {
-        alert('Fehler beim Verbinden mit CouchDB: ' + err.message);
+        alert('Fehler beim Speichern: ' + err.message);
       }
     });
+
+    window.onload = loadSession;
   </script>
 </body>
 </html>
