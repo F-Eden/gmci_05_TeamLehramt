@@ -153,32 +153,112 @@
         .replace(/\-\-+/g, '-');   
     }
 
-    function createQuestionElement() {
-      questionCount++;
-      const qId = 'q' + questionCount;
-      const questionDiv = document.createElement('div');
-      questionDiv.classList.add('question-item');
-      questionDiv.setAttribute('data-qid', qId);
+    function createQuestionElement(q = null) {
+    const qId = q?.id || ('q' + Date.now());
+    const text = q?.text || '';
+    const type = q?.type || '';
 
-      questionDiv.innerHTML = `
+    const questionDiv = document.createElement('div');
+    questionDiv.classList.add('question-item');
+    questionDiv.setAttribute('data-qid', qId);
+
+    let mcOptionsHtml = '';
+    if (type === 'multiple-choice') {
+        const options = q?.options || [];
+        mcOptionsHtml = `
+        <div class="mc-options-container">
+            <label>Antwortoptionen:</label>
+            <ul class="mc-options-list">
+            ${options.map((opt, i) => `
+                <li>
+                <input type="text" name="${qId}_option_${i}" value="${opt}" required />
+                <button type="button" class="remove-option" title="Option entfernen">×</button>
+                </li>`).join('')}
+            </ul>
+            <button type="button" class="add-option">Option hinzufügen</button>
+        </div>
+        `;
+    }
+
+    questionDiv.innerHTML = `
         <button type="button" class="question-remove" title="Frage entfernen">&times;</button>
         <label for="${qId}_text">Frage:</label>
-        <input type="text" id="${qId}_text" name="${qId}_text" placeholder="Frage eingeben" required />
+        <input type="text" id="${qId}_text" name="${qId}_text" value="${text}" required />
         
         <label for="${qId}_type">Bewertungsart:</label>
         <select id="${qId}_type" name="${qId}_type" required>
-          <option value="" disabled selected>Bewertungsart wählen</option>
-          <option value="stars">Sternebewertung</option>
-          <option value="emoji">Emojis</option>
-          <option value="text">Freitext</option>
+        <option value="" disabled ${type === '' ? 'selected' : ''}>Bewertungsart wählen</option>
+        <option value="stars" ${type === 'stars' ? 'selected' : ''}>Sternebewertung</option>
+        <option value="emoji" ${type === 'emoji' ? 'selected' : ''}>Emojis</option>
+        <option value="text" ${type === 'text' ? 'selected' : ''}>Freitext</option>
+        <option value="multiple-choice" ${type === 'multiple-choice' ? 'selected' : ''}>Multiple Choice</option>
         </select>
-      `;
+        ${mcOptionsHtml}
+    `;
 
-      questionDiv.querySelector('.question-remove').addEventListener('click', () => {
+    questionDiv.querySelector('.question-remove').addEventListener('click', () => {
         questionsContainer.removeChild(questionDiv);
-      });
+    });
 
-      return questionDiv;
+    if (type === 'multiple-choice') {
+        const addOptionBtn = questionDiv.querySelector('.add-option');
+        const optionsList = questionDiv.querySelector('.mc-options-list');
+
+        addOptionBtn.addEventListener('click', () => {
+        const optionCount = optionsList.children.length;
+        const li = document.createElement('li');
+        li.innerHTML = `
+            <input type="text" name="${qId}_option_${optionCount}" value="" required />
+            <button type="button" class="remove-option" title="Option entfernen">×</button>
+        `;
+        li.querySelector('.remove-option').addEventListener('click', () => {
+            li.remove();
+        });
+        optionsList.appendChild(li);
+        });
+
+        questionDiv.querySelectorAll('.remove-option').forEach(btn => {
+        btn.addEventListener('click', e => {
+            e.target.closest('li').remove();
+        });
+        });
+    }
+
+    questionDiv.querySelector(`#${qId}_type`).addEventListener('change', (e) => {
+        if (e.target.value === 'multiple-choice') {
+        if (!questionDiv.querySelector('.mc-options-container')) {
+            const mcDiv = document.createElement('div');
+            mcDiv.classList.add('mc-options-container');
+            mcDiv.innerHTML = `
+            <label>Antwortoptionen:</label>
+            <ul class="mc-options-list"></ul>
+            <button type="button" class="add-option">Option hinzufügen</button>
+            `;
+            questionDiv.appendChild(mcDiv);
+
+            const addOptionBtn = mcDiv.querySelector('.add-option');
+            const optionsList = mcDiv.querySelector('.mc-options-list');
+
+            addOptionBtn.addEventListener('click', () => {
+            const optionCount = optionsList.children.length;
+            const li = document.createElement('li');
+            li.innerHTML = `
+                <input type="text" name="${qId}_option_${optionCount}" value="" required />
+                <button type="button" class="remove-option" title="Option entfernen">×</button>
+            `;
+            li.querySelector('.remove-option').addEventListener('click', () => {
+                li.remove();
+            });
+            optionsList.appendChild(li);
+            });
+        }
+        } else {
+        const mcDiv = questionDiv.querySelector('.mc-options-container');
+        if (mcDiv) mcDiv.remove();
+        }
+    });
+
+    return questionDiv;
     }
 
     addQuestionBtn.addEventListener('click', () => {
@@ -200,26 +280,38 @@
       }
 
       const questions = [];
-      for (const div of questionDivs) {
+        for (const div of questionDivs) {
         const qId = div.getAttribute('data-qid');
         const textInput = div.querySelector(`input[name="${qId}_text"]`);
         const typeSelect = div.querySelector(`select[name="${qId}_type"]`);
-
+        
         if (!textInput.value.trim()) {
-          alert('Bitte Text für alle Fragen eingeben.');
-          return;
+            alert('Bitte Text für alle Fragen eingeben.');
+            return;
         }
         if (!typeSelect.value) {
-          alert('Bitte Bewertungsart für alle Fragen auswählen.');
-          return;
+            alert('Bitte Bewertungsart für alle Fragen auswählen.');
+            return;
+        }
+
+        let options = [];
+        if (typeSelect.value === 'multiple-choice') {
+            options = Array.from(div.querySelectorAll('.mc-options-list input[type="text"]'))
+            .map(input => input.value.trim())
+            .filter(v => v.length > 0);
+            if (options.length === 0) {
+            alert('Bitte mindestens eine Option bei Multiple-Choice-Fragen eingeben.');
+            return;
+            }
         }
 
         questions.push({
-          id: qId,
-          text: textInput.value.trim(),
-          type: typeSelect.value
+            id: qId,
+            text: textInput.value.trim(),
+            type: typeSelect.value,
+            ...(options.length ? {options} : {})
         });
-      }
+        }
 
       const id = slugify(title);
       const couchUrl = `http://localhost:5984/gmci/${encodeURIComponent(id)}`;
@@ -252,6 +344,7 @@
 
         if (putResponse.ok) {
           alert('Session erfolgreich gespeichert!');
+          window.location.href = 'sessions.html';
           const qrData = `https://deineuniseite.edu/session/${id}`;
           qrCodeContainer.innerHTML = '';
           QRCode.toCanvas(qrCodeContainer, qrData, { width: 200 }, err => {
