@@ -202,11 +202,8 @@
 
             // Erstes Fenster öffnen (liveDashboard)
             window.open(`liveDashboard.html?id=${sessionIdEncoded}`, '_blank');
-
-            // Zweites Fenster (Session_Stud) mit 500ms Verzögerung öffnen
-            setTimeout(() => {
-              window.open(`Session_Stud.html?id=${sessionIdEncoded}`, '_blank');
-            }, 5000);
+            window.open(`Session_Stud.html?id=${sessionIdEncoded}`, '_blank');
+         
           });
 
           // QR-Code Icon (📱) = QR-Code generieren und herunterladen
