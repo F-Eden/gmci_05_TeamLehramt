@@ -68,6 +68,44 @@
     padding: 5px 0;
     border-bottom: 1px solid #eee;
   }
+  .answer-count {
+    background-color: #e8f4f8;
+    padding: 0.3rem 0.6rem;
+    border-radius: 12px;
+    font-size: 0.9rem;
+    font-weight: bold;
+    margin-left: 10px;
+  }
+  .stats-container {
+    margin-top: 1rem;
+    padding: 0.5rem;
+    background-color: #f0f8ff;
+    border-radius: 6px;
+    border-left: 4px solid #2980b9;
+  }
+  .stat-bar {
+    margin: 0.3rem 0;
+  }
+  .stat-label {
+    font-weight: bold;
+    margin-right: 0.5rem;
+  }
+  .stat-bar-fill {
+    display: inline-block;
+    height: 20px;
+    background-color: #3498db;
+    border-radius: 3px;
+    margin-right: 0.5rem;
+    vertical-align: middle;
+  }
+  .stat-percentage {
+    font-size: 0.9rem;
+    color: #666;
+  }
+  .stat-emoji {
+    font-size: 1.2rem;
+    margin-right: 0.5rem;
+  }
 </style>
 </head>
 <body>
@@ -153,22 +191,13 @@
     }
   });
 
-  // Live Updates über CouchDB Changes Feed
-  const source = new EventSource(`http://localhost:5984/gmci/_changes?feed=eventsource&since=now&include_docs=true`);
-  source.onmessage = event => {
-    const change = JSON.parse(event.data);
-    const doc = change.doc;
-    if (doc.type === 'chat' && doc.sessionId === sessionId) {
-      addChatMessage(doc.message, !!doc.fromModerator);
-    }
-  };
-
   // Sessionanzeigen, Frage freischalten usw. bleiben unverändert
   const questionList = document.getElementById('questionList');
   const sessionTitleDiv = document.getElementById('sessionTitle');
   const statusMessage = document.getElementById('statusMessage');
 
   let sessionDoc = null;
+  let questionAnswerCounts = {}; // Speichert Antwortzahlen pro Frage
 
   // ID aus URL auslesen
   function getSessionId() {
@@ -194,29 +223,198 @@
     return Array.isArray(sessionDoc.unlockedQuestions) && sessionDoc.unlockedQuestions.includes(qId);
   }
 
+  // In liveDashboard.html, ändere saveSessionDoc():
   async function saveSessionDoc() {
     if (!sessionDoc || !sessionDoc._id) return;
     try {
+      // Sicherstellen, dass _rev vorhanden ist
+      if (!sessionDoc._rev) {
+        const currentRes = await fetch(`http://localhost:5984/gmci/${encodeURIComponent(sessionDoc._id)}`);
+        if (currentRes.ok) {
+          const currentDoc = await currentRes.json();
+          sessionDoc._rev = currentDoc._rev;
+        }
+      }
+      
       const res = await fetch(`http://localhost:5984/gmci/${encodeURIComponent(sessionDoc._id)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(sessionDoc)
       });
+      
       if (!res.ok) {
         const error = await res.json();
         statusMessage.textContent = 'Fehler beim Speichern: ' + (error.reason || res.statusText);
         return false;
       }
+      
       const data = await res.json();
       sessionDoc._rev = data.rev;
       statusMessage.textContent = 'Speicherung erfolgreich ✔';
       setTimeout(() => statusMessage.textContent = '', 3000);
+      
+      // NEU: Sofortige Aktualisierung der Studentenseite
+      // Wir können das über einen EventSource-Feed lösen
+      updateAnswerCounts();
+      updateAllStatistics();
+      
       return true;
     } catch (e) {
       statusMessage.textContent = 'Netzwerkfehler beim Speichern';
       console.error(e);
       return false;
     }
+  }
+  // Funktion zum Berechnen der Statistiken
+  async function calculateStatistics() {
+    if (!sessionDoc || !Array.isArray(sessionDoc.questions)) return;
+    
+    try {
+      // Alle Feedbacks für diese Session laden
+      const feedbackQuery = {
+        selector: { 
+          type: 'feedback',
+          sessionId: sessionId 
+        }
+      };
+
+      const res = await fetch('http://localhost:5984/gmci/_find', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(feedbackQuery)
+      });
+      
+      const data = await res.json();
+      const feedbackDocs = data.docs || [];
+      
+      // Statistik für jede Frage berechnen
+      const stats = {};
+      
+      sessionDoc.questions.forEach(question => {
+        stats[question.id] = {
+          type: question.type,
+          totalAnswers: 0,
+          answers: {}
+        };
+        
+        // Initialisiere Antworten für jeden Typ
+        switch(question.type) {
+          case 'stars':
+            for (let i = 1; i <= 5; i++) {
+              stats[question.id].answers[i] = 0;
+            }
+            break;
+          case 'emoji':
+            stats[question.id].answers['😞'] = 0;
+            stats[question.id].answers['😐'] = 0;
+            stats[question.id].answers['😀'] = 0;
+            break;
+          case 'multiple-choice':
+            if (question.options) {
+              question.options.forEach(option => {
+                stats[question.id].answers[option] = 0;
+              });
+            }
+            break;
+        }
+      });
+      
+      // Feedbacks verarbeiten
+      feedbackDocs.forEach(feedback => {
+        if (feedback.answers) {
+          Object.keys(feedback.answers).forEach(questionId => {
+            const answer = feedback.answers[questionId];
+            if (stats[questionId]) {
+              stats[questionId].totalAnswers++;
+              if (stats[questionId].answers.hasOwnProperty(answer)) {
+                stats[questionId].answers[answer]++;
+              } else if (stats[questionId].type === 'stars' && !isNaN(answer)) {
+                // Für Sternebewertung
+                stats[questionId].answers[answer]++;
+              }
+            }
+          });
+        }
+      });
+      
+      return stats;
+      
+    } catch (error) {
+      console.error('Fehler beim Berechnen der Statistiken:', error);
+      return {};
+    }
+  }
+
+  // Funktion zum Anzeigen der Statistiken
+  function displayStatistics(question, stats) {
+    const statsContainer = document.getElementById(`stats-${question.id}`);
+    if (!statsContainer) return;
+    
+    const statData = stats[question.id];
+    if (!statData) {
+      statsContainer.innerHTML = '<p>Keine Statistiken verfügbar</p>';
+      return;
+    }
+    
+    let html = '<div class="stats-container">';
+    
+    switch(statData.type) {
+      case 'stars':
+        html += '<strong>Sternebewertung:</strong><br>';
+        for (let i = 1; i <= 5; i++) {
+          const count = statData.answers[i] || 0;
+          const percentage = statData.totalAnswers > 0 ? Math.round((count / statData.totalAnswers) * 100) : 0;
+          html += `<div class="stat-bar">
+            <span>${i}*</span>
+            <span class="stat-bar-fill" style="width: ${percentage}%"></span>
+            <span class="stat-percentage">${count} (${percentage}%)</span>
+          </div>`;
+        }
+        break;
+        
+      case 'emoji':
+        html += '<strong>Emoji-Bewertung:</strong><br>';
+        const emojis = ['😞', '😐', '😀'];
+        emojis.forEach(emoji => {
+          const count = statData.answers[emoji] || 0;
+          const percentage = statData.totalAnswers > 0 ? Math.round((count / statData.totalAnswers) * 100) : 0;
+          html += `<div class="stat-bar">
+            <span class="stat-emoji">${emoji}</span>
+            <span class="stat-bar-fill" style="width: ${percentage}%"></span>
+            <span class="stat-percentage">${count} (${percentage}%)</span>
+          </div>`;
+        });
+        break;
+        
+      case 'multiple-choice':
+        html += '<strong>Multiple Choice:</strong><br>';
+        if (question.options) {
+          question.options.forEach(option => {
+            const count = statData.answers[option] || 0;
+            const percentage = statData.totalAnswers > 0 ? Math.round((count / statData.totalAnswers) * 100) : 0;
+            html += `<div class="stat-bar">
+              <span>${option}</span>
+              <span class="stat-bar-fill" style="width: ${percentage}%"></span>
+              <span class="stat-percentage">${count} (${percentage}%)</span>
+            </div>`;
+          });
+        }
+        break;
+    }
+    
+    html += '</div>';
+    statsContainer.innerHTML = html;
+  }
+
+  // Funktion zum Aktualisieren aller Statistiken
+  async function updateAllStatistics() {
+    if (!sessionDoc || !Array.isArray(sessionDoc.questions)) return;
+    
+    const stats = await calculateStatistics();
+    
+    sessionDoc.questions.forEach(question => {
+      displayStatistics(question, stats);
+    });
   }
 
   function renderQuestions() {
@@ -234,6 +432,12 @@
       const label = document.createElement('label');
       label.classList.add('question-text');
       label.textContent = question.text;
+
+      // Antwort-Zähler hinzufügen
+      const countSpan = document.createElement('span');
+      countSpan.id = `answer-count-${question.id}`;
+      countSpan.classList.add('answer-count');
+      countSpan.textContent = '0 Antworten';
 
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
@@ -259,14 +463,108 @@
       });
 
       div.appendChild(label);
+      div.appendChild(countSpan); // Zähler hinzufügen
       div.appendChild(checkbox);
+      
+      // Statistik-Container hinzufügen
+      const statsDiv = document.createElement('div');
+      statsDiv.id = `stats-${question.id}`;
+      statsDiv.classList.add('stats-container');
+      statsDiv.style.marginTop = '1rem';
+      statsDiv.innerHTML = '<em>Lade Statistiken...</em>';
+      div.appendChild(statsDiv);
+      
       questionList.appendChild(div);
     });
+    
+    // Initialen Zählerstand und Statistiken aktualisieren
+    setTimeout(async () => {
+      updateAllStatistics();
+      updateAnswerCounts();
+    }, 100);
   }
 
+  // Funktion zum Zählen der Antworten pro Frage
+  async function updateAnswerCounts() {
+    if (!sessionDoc || !Array.isArray(sessionDoc.questions)) return;
+    
+    try {
+      // Alle Feedbacks für diese Session laden
+      const feedbackQuery = {
+        selector: { 
+          type: 'feedback',
+          sessionId: sessionId 
+        }
+      };
+
+      const res = await fetch('http://localhost:5984/gmci/_find', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(feedbackQuery)
+      });
+      
+      const data = await res.json();
+      const feedbackDocs = data.docs || [];
+      
+      // Antwortzähler initialisieren
+      const counts = {};
+      sessionDoc.questions.forEach(question => {
+        counts[question.id] = 0;
+      });
+      
+      // Für jedes Feedback die Antworten zählen
+      feedbackDocs.forEach(feedback => {
+        if (feedback.answers) {
+          // Zähle für jede Frage, die in den Antworten vorkommt
+          Object.keys(feedback.answers).forEach(questionId => {
+            if (counts.hasOwnProperty(questionId)) {
+              counts[questionId]++;
+            }
+          });
+        }
+      });
+      
+      // Aktualisiere die Zähler in der UI
+      sessionDoc.questions.forEach(question => {
+        const countElement = document.getElementById(`answer-count-${question.id}`);
+        if (countElement) {
+          countElement.textContent = `${counts[question.id]} Antworten`;
+        }
+      });
+      
+      // Speichere die Zähler für später
+      questionAnswerCounts = counts;
+      
+    } catch (error) {
+      console.error('Fehler beim Zählen der Antworten:', error);
+    }
+  }
+
+  // Live-Updates über Changes Feed
+  function setupLiveFeedbackUpdates() {
+    const source = new EventSource(`http://localhost:5984/gmci/_changes?feed=eventsource&since=now&include_docs=true`);
+    source.onmessage = event => {
+      const change = JSON.parse(event.data);
+      const doc = change.doc;
+      
+      if (doc.type === 'feedback' && doc.sessionId === sessionId) {
+        // Aktualisiere die Zähler und Statistiken, sobald neue Feedbacks kommen
+        console.log('Neues Feedback erhalten, aktualisiere Zähler und Statistiken...');
+        updateAnswerCounts();
+        updateAllStatistics();
+      }
+      
+      if (doc.type === 'chat' && doc.sessionId === sessionId) {
+        addChatMessage(doc.message, !!doc.fromModerator);
+      }
+    };
+  }
+
+  // Initialisiere Live-Updates
   window.onload = () => {
     loadExistingChats();
     loadSession();
+    setupLiveFeedbackUpdates(); // Live-Updates aktivieren
   };
 </script>
 

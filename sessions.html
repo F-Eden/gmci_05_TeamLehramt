@@ -150,29 +150,25 @@
       });
     }
 
+
     async function loadSessions() {
-      const query = {
-        selector: { type: "session" },
-        sort: [{ createdAt: "desc" }]
-      };
-
       try {
-        const response = await fetch(couchUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(query)
-        });
-
+        const response = await fetch('http://localhost:5984/gmci/_all_docs?include_docs=true');
         const data = await response.json();
+        
+        const sessions = data.rows
+          .filter(row => row.doc && row.doc.type === "session")
+          .sort((a, b) => new Date(b.doc.createdAt) - new Date(a.doc.createdAt))
+          .map(row => row.doc);
 
-        if (!data.docs || data.docs.length === 0) {
+        if (sessions.length === 0) {
           sessionList.innerHTML = '<p>Keine Sessions gefunden.</p>';
           return;
         }
 
         sessionList.innerHTML = '';
 
-        data.docs.forEach(session => {
+        sessions.forEach(session => {
           const div = document.createElement('div');
           div.classList.add('session-item');
 
@@ -197,13 +193,13 @@
           playIcon.classList.add('icon-button');
           playIcon.title = 'Feedbackrunde starten';
           playIcon.textContent = '▶️';
-          playIcon.addEventListener('click', () => {
+          playIcon.addEventListener('click', (e) => {
+            e.stopPropagation();
             const sessionIdEncoded = encodeURIComponent(session._id);
-
+            
             // Erstes Fenster öffnen (liveDashboard)
             window.open(`liveDashboard.html?id=${sessionIdEncoded}`, '_blank');
-            window.open(`Session_Stud.html?id=${sessionIdEncoded}`, '_blank');
-         
+            window.open(`session_Stud.html?id=${sessionIdEncoded}`, '_blank');
           });
 
           // QR-Code Icon (📱) = QR-Code generieren und herunterladen
@@ -224,19 +220,11 @@
           deleteIcon.textContent = '🗑️';
           deleteIcon.addEventListener('click', async e => {
             e.stopPropagation();
-            if (confirm(`Möchtest du die Session "${session.title}" wirklich löschen?`)) {
+            if (confirm(`Möchtest du die Session "${session.title}" wirklich löschen? Dies löscht auch alle zugehörigen Feedbacks und Chat-Nachrichten!`)) {
               try {
-                const docRes = await fetch(`http://localhost:5984/gmci/${encodeURIComponent(session._id)}`);
-                if (!docRes.ok) throw new Error('Session nicht gefunden');
-                const doc = await docRes.json();
-
-                const delRes = await fetch(`http://localhost:5984/gmci/${encodeURIComponent(session._id)}?rev=${doc._rev}`, {
-                  method: 'DELETE'
-                });
-
-                if (!delRes.ok) throw new Error('Löschen fehlgeschlagen');
-
-                alert('Session gelöscht!');
+                // NEU: Lösche Session mit allen zugehörigen Daten
+                await deleteSessionWithRelatedData(session._id);
+                alert('Session und alle zugehörigen Daten gelöscht!');
                 loadSessions();
               } catch (err) {
                 alert('Fehler beim Löschen: ' + err.message);
@@ -258,6 +246,81 @@
         console.error('Fehler beim Laden der Sessions:', error);
       }
     }
+
+    // NEUE Funktion für effizientes Löschen aller zugehörigen Daten
+    async function deleteSessionWithRelatedData(sessionId) {
+      try {
+        // 1. Finde alle Feedbacks für diese Session
+        const feedbackQuery = {
+          selector: { 
+            type: 'feedback',
+            sessionId: sessionId 
+          }
+        };
+        
+        const feedbackResponse = await fetch('http://localhost:5984/gmci/_find', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify(feedbackQuery)
+        });
+        
+        const feedbackData = await feedbackResponse.json();
+        
+        // 2. Finde alle Chat-Nachrichten für diese Session
+        const chatQuery = {
+          selector: { 
+            type: 'chat',
+            sessionId: sessionId 
+          }
+        };
+        
+        const chatResponse = await fetch('http://localhost:5984/gmci/_find', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify(chatQuery)
+        });
+        
+        const chatData = await chatResponse.json();
+        
+        // 3. Sammle alle IDs zum Löschen (Session + Feedbacks + Chats)
+        const idsToDelete = [
+          sessionId, // Die Session selbst
+          ...(feedbackData.docs || []).map(doc => doc._id),
+          ...(chatData.docs || []).map(doc => doc._id)
+        ];
+        
+        // 4. Lösche alle Dokumente mit ihren Revisionen
+        const deletePromises = idsToDelete.map(async (id) => {
+          try {
+            const docResponse = await fetch(`http://localhost:5984/gmci/${encodeURIComponent(id)}`);
+            const doc = await docResponse.json();
+            
+            if (doc._rev) {
+              const deleteResponse = await fetch(
+                `http://localhost:5984/gmci/${encodeURIComponent(id)}?rev=${doc._rev}`,
+                { method: 'DELETE' }
+              );
+              if (!deleteResponse.ok) {
+                throw new Error(`Fehler beim Löschen von ${id}`);
+              }
+            }
+          } catch (e) {
+            console.warn(`Konnte ${id} nicht löschen:`, e.message);
+          }
+        });
+        
+        await Promise.all(deletePromises);
+        
+        console.log(`Session ${sessionId} und alle zugehörigen Daten gelöscht`);
+        
+      } catch (error) {
+        console.error('Fehler beim Löschen der Session mit zugehörigen Daten:', error);
+        throw error;
+      }
+    }
+
+
+
 
     window.addEventListener('load', loadSessions);
   </script>
