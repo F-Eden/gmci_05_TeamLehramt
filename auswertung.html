@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <title>Auswertung der Session</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 700px;
+      margin: 2rem auto;
+      padding: 1rem;
+      background: #f9f9f9;
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 1rem;
+    }
+    .question-block {
+      background: white;
+      border-radius: 6px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+      box-shadow: 0 0 6px rgba(0,0,0,0.1);
+    }
+    .question-title {
+      font-weight: bold;
+      margin-bottom: 0.5rem;
+    }
+    .stats {
+      font-size: 0.9rem;
+      color: #333;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Auswertung der Session</h1>
+  <div id="sessionTitle"><em>Lädt …</em></div>
+  <div id="statsContainer"></div>
+
+  <script>
+    const sessionTitleDiv = document.getElementById('sessionTitle');
+    const statsContainer = document.getElementById('statsContainer');
+
+    function getSessionId() {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('id');
+    }
+
+    async function loadSession(sessionId) {
+      const res = await fetch(`http://localhost:5984/gmci/${encodeURIComponent(sessionId)}`);
+      if(!res.ok) {
+        alert('Session konnte nicht geladen werden');
+        throw new Error('Session konnte nicht geladen werden');
+      }
+      return await res.json();
+    }
+
+    async function loadFeedbacks(sessionId) {
+      const res = await fetch('http://localhost:5984/gmci/_find', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ selector: { type: 'feedback', sessionId: sessionId }})
+      });
+      if(!res.ok) {
+        alert('Feedbacks konnten nicht geladen werden');
+        throw new Error('Feedbacks konnten nicht geladen werden');
+      }
+      const data = await res.json();
+      return data.docs;
+    }
+
+    function getResponseStats(feedbackDocs, questionId, questionType, questionOptions = []) {
+      const counts = {};
+      feedbackDocs.forEach(doc => {
+        if (doc.answers && doc.answers[questionId] !== undefined) {
+          const answer = doc.answers[questionId];
+          if (['stars', 'multiple-choice', 'emoji'].includes(questionType)) {
+            counts[answer] = (counts[answer] || 0) + 1;
+          }
+        }
+      });
+      const total = Object.values(counts).reduce((a,b) => a+b, 0);
+      const distribution = [];
+      if (total > 0) {
+        questionOptions = questionOptions.length > 0 ? questionOptions : Object.keys(counts).sort();
+        questionOptions.forEach(opt => {
+          const count = counts[opt] || 0;
+          const percent = ((count / total) * 100).toFixed(1);
+          distribution.push(`${percent}% (${count}) für "${opt}"`);
+        });
+      }
+      return { total, distribution };
+    }
+
+    async function renderStats(session, feedbackDocs) {
+      sessionTitleDiv.textContent = `Session: ${session.title}`;
+      statsContainer.innerHTML = '';
+
+      if (!Array.isArray(session.questions) || session.questions.length === 0) {
+        statsContainer.textContent = 'Keine Fragen vorhanden.';
+        return;
+      }
+
+      session.questions.forEach(q => {
+        if(['stars','emoji','multiple-choice'].includes(q.type)) {
+          const stats = getResponseStats(feedbackDocs, q.id, q.type, q.options || []);
+
+          const qDiv = document.createElement('div');
+          qDiv.className = 'question-block';
+
+          const title = document.createElement('div');
+          title.className = 'question-title';
+          title.textContent = q.text;
+
+          const statText = document.createElement('div');
+          statText.className = 'stats';
+          if(stats.total > 0) {
+            statText.textContent = `${stats.total} Studierende haben abgestimmt: ${stats.distribution.join(', ')}`;
+          } else {
+            statText.textContent = 'Noch keine Abstimmungen';
+          }
+
+          qDiv.appendChild(title);
+          qDiv.appendChild(statText);
+          statsContainer.appendChild(qDiv);
+        }
+      });
+    }
+
+    async function loadAndRender() {
+      try {
+        const sessionId = getSessionId();
+        if(!sessionId) throw new Error('Keine Session ID im Link');
+
+        const session = await loadSession(sessionId);
+        const feedbackDocs = await loadFeedbacks(sessionId);
+
+        renderStats(session, feedbackDocs);
+      } catch(e) {
+        alert('Fehler: ' + e.message);
+      }
+    }
+
+    window.onload = loadAndRender;
+  </script>
+
+</body>
+</html>
