@@ -202,6 +202,19 @@
             window.open(`session_Stud.html?id=${sessionIdEncoded}`, '_blank');
           });
 
+          // Auswertungs-Icon
+          const statsIcon = document.createElement('span');
+          statsIcon.classList.add('icon-button');
+          statsIcon.textContent = '📊';
+          statsIcon.title = 'Auswertung anzeigen';
+          statsIcon.addEventListener('click', e => {
+            e.stopPropagation(); // verhindert dass auch das Anklicken der Session ausgelöst wird
+            window.location.href = `auswertung.html?id=${encodeURIComponent(session._id)}`;
+          });
+
+
+
+
           // QR-Code Icon (📱) = QR-Code generieren und herunterladen
           const qrIcon = document.createElement('span');
           qrIcon.classList.add('icon-button');
@@ -234,6 +247,7 @@
 
           // Icons hinzufügen in Reihenfolge: Play - QR - Müll
           iconsDiv.appendChild(playIcon);
+          iconsDiv.appendChild(statsIcon);
           iconsDiv.appendChild(qrIcon);
           iconsDiv.appendChild(deleteIcon);
 
