@@ -1,135 +1,293 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-  <meta charset="UTF-8" />
-  <title>Auswertung der Session</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      max-width: 700px;
-      margin: 2rem auto;
-      padding: 1rem;
-      background: #f9f9f9;
-    }
-    h1 {
-      text-align: center;
-      margin-bottom: 1rem;
-    }
-    .question-block {
-      background: white;
-      border-radius: 6px;
-      padding: 1rem;
-      margin-bottom: 1rem;
-      box-shadow: 0 0 6px rgba(0,0,0,0.1);
-    }
-    .question-title {
-      font-weight: bold;
-      margin-bottom: 0.5rem;
-    }
-    .stats {
-      font-size: 0.9rem;
-      color: #333;
-    }
-  </style>
+<meta charset="UTF-8" />
+<title>Auswertung der Session</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+  }
+  nav {
+    width: 180px;
+    background-color: #2c3e50;
+    color: white;
+    display: flex;
+    flex-direction: column;
+    padding-top: 1rem;
+  }
+  nav a {
+    color: white;
+    text-decoration: none;
+    padding: 1rem 1.5rem;
+    margin: 0.2rem 0;
+    border-left: 5px solid transparent;
+    transition: background-color 0.3s;
+    font-weight: 600;
+  }
+  nav a:hover {
+    background-color: #34495e;
+  }
+  nav a.active {
+    background-color: #f1c40f;
+    color: black;
+    border-left-color: #f39c12;
+  }
+  main {
+    flex-grow: 1;
+    overflow-y: auto;
+    padding: 2rem;
+    background-color: #f9f9f9;
+  }
+  h1 {
+    text-align: center;
+    margin-bottom: 1rem;
+  }
+  #downloadCsvBtn {
+    margin-bottom: 1rem;
+    padding: 0.5rem 1rem;
+    font-size: 1rem;
+    cursor: pointer;
+    background-color: #2980b9;
+    color: white;
+    border: none;
+    border-radius: 4px;
+  }
+  #downloadCsvBtn:hover {
+    background-color: #21689f;
+  }
+  .question-block {
+    background: white;
+    border-radius: 6px;
+    padding: 1rem;
+    margin-bottom: 2rem;
+    box-shadow: 0 0 6px rgba(0,0,0,0.1);
+  }
+  .question-title {
+    font-weight: bold;
+    margin-bottom: 0.5rem;
+  }
+  canvas {
+    max-width: 100% !important;
+    height: 250px !important;
+  }
+  .text-responses {
+    max-height: 150px;
+    overflow-y: auto;
+    margin-top: 0.5rem;
+    border-top: 1px solid #ddd;
+    padding-top: 0.5rem;
+    font-style: italic;
+    color: #333;
+    white-space: pre-wrap;
+  }
+  .response-item {
+    margin-bottom: 0.8rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid #eee;
+  }
+  .stats {
+    font-size: 0.9rem;
+    color: #333;
+    margin-top: 0.3rem;
+  }
+</style>
 </head>
 <body>
 
+<nav>
+  <a href="index.html">Startseite</a>
+  <a href="sessions.html">Sessions</a>
+  <a href="auswertung.html" class="active">Auswertung</a>
+  <a href="profil.html">Profil</a>
+</nav>
+
+<main>
   <h1>Auswertung der Session</h1>
   <div id="sessionTitle"><em>Lädt …</em></div>
+    <button id="downloadCsvBtn">CSV herunterladen</button>
   <div id="statsContainer"></div>
+</main>
 
-  <script>
-    const sessionTitleDiv = document.getElementById('sessionTitle');
-    const statsContainer = document.getElementById('statsContainer');
+<script>
+  let sessionDoc = null;
+  const sessionTitleDiv = document.getElementById('sessionTitle');
+  const statsContainer = document.getElementById('statsContainer');
+  let chartInstances = [];
 
-    function getSessionId() {
-      const params = new URLSearchParams(window.location.search);
-      return params.get('id');
+  function getSessionId() {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('id');
+  }
+
+  async function loadSession(sessionId) {
+    const res = await fetch(`http://localhost:5984/gmci/${encodeURIComponent(sessionId)}`);
+    if(!res.ok) {
+      alert('Session konnte nicht geladen werden');
+      throw new Error('Session konnte nicht geladen werden');
     }
+    return await res.json();
+  }
 
-    async function loadSession(sessionId) {
-      const res = await fetch(`http://localhost:5984/gmci/${encodeURIComponent(sessionId)}`);
-      if(!res.ok) {
-        alert('Session konnte nicht geladen werden');
-        throw new Error('Session konnte nicht geladen werden');
+  async function loadFeedbacks(sessionId) {
+    const res = await fetch('http://localhost:5984/gmci/_find', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ selector: { type: 'feedback', sessionId: sessionId }})
+    });
+    if(!res.ok) {
+      alert('Feedbacks konnten nicht geladen werden');
+      throw new Error('Feedbacks konnten nicht geladen werden');
+    }
+    const data = await res.json();
+    return data.docs;
+  }
+
+  function getResponseStats(feedbackDocs, questionId, questionType, questionOptions = []) {
+    const counts = {};
+    feedbackDocs.forEach(doc => {
+      if (doc.answers && doc.answers[questionId] !== undefined) {
+        const answer = doc.answers[questionId];
+        if (['stars', 'multiple-choice', 'emoji'].includes(questionType)) {
+          counts[answer] = (counts[answer] || 0) + 1;
+        }
       }
-      return await res.json();
-    }
-
-    async function loadFeedbacks(sessionId) {
-      const res = await fetch('http://localhost:5984/gmci/_find', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ selector: { type: 'feedback', sessionId: sessionId }})
+    });
+    const total = Object.values(counts).reduce((a,b) => a+b, 0);
+    const distribution = [];
+    if (total > 0) {
+      questionOptions = questionOptions.length > 0 ? questionOptions : Object.keys(counts).sort();
+      questionOptions.forEach(opt => {
+        const count = counts[opt] || 0;
+        const percent = ((count / total) * 100).toFixed(1);
+        distribution.push({label: opt, count: count, percent: percent});
       });
-      if(!res.ok) {
-        alert('Feedbacks konnten nicht geladen werden');
-        throw new Error('Feedbacks konnten nicht geladen werden');
+    }
+    return { total, distribution };
+  }
+
+  function destroyCharts() {
+    chartInstances.forEach(chart => chart.destroy());
+    chartInstances = [];
+  }
+
+  function createChart(container, questionType, stats) {
+    const canvas = document.createElement('canvas');
+    container.appendChild(canvas);
+    const labels = stats.distribution.map(d => d.label);
+    const dataCounts = stats.distribution.map(d => d.count);
+
+    const backgroundColors = [];
+
+    if (questionType === 'emoji') {
+      for (let i = 0; i < labels.length; i++) {
+        backgroundColors.push('rgba(100, 149, 237, 0.6)');
       }
-      const data = await res.json();
-      return data.docs;
+    } else if (questionType === 'stars') {
+      labels.forEach(() => backgroundColors.push('rgba(255, 206, 86, 0.6)'));
+    } else {
+      for (let i = 0; i < labels.length; i++) {
+        backgroundColors.push('rgba(54, 162, 235, 0.6)');
+      }
     }
 
-    function getResponseStats(feedbackDocs, questionId, questionType, questionOptions = []) {
-      const counts = {};
-      feedbackDocs.forEach(doc => {
-        if (doc.answers && doc.answers[questionId] !== undefined) {
-          const answer = doc.answers[questionId];
-          if (['stars', 'multiple-choice', 'emoji'].includes(questionType)) {
-            counts[answer] = (counts[answer] || 0) + 1;
+    const chart = new Chart(canvas.getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Anzahl Stimmen',
+          data: dataCounts,
+          backgroundColor: backgroundColors,
+          borderColor: 'rgba(0,0,0,0.1)',
+          borderWidth: 1
+        }]
+      },
+      options: {
+        responsive: true,
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: { precision: 0 }
+          }
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => `${ctx.parsed.y} Stimmen (${stats.distribution[ctx.dataIndex].percent}%)`
+            }
           }
         }
-      });
-      const total = Object.values(counts).reduce((a,b) => a+b, 0);
-      const distribution = [];
-      if (total > 0) {
-        questionOptions = questionOptions.length > 0 ? questionOptions : Object.keys(counts).sort();
-        questionOptions.forEach(opt => {
-          const count = counts[opt] || 0;
-          const percent = ((count / total) * 100).toFixed(1);
-          distribution.push(`${percent}% (${count}) für "${opt}"`);
-        });
       }
-      return { total, distribution };
+    });
+    chartInstances.push(chart);
+  }
+
+  async function renderStats(session, feedbackDocs) {
+    destroyCharts();
+    sessionTitleDiv.textContent = `Session: ${session.title}`;
+    statsContainer.innerHTML = '';
+
+    if (!Array.isArray(session.questions) || session.questions.length === 0) {
+      statsContainer.textContent = 'Keine Fragen vorhanden.';
+      return;
     }
 
-    async function renderStats(session, feedbackDocs) {
-      sessionTitleDiv.textContent = `Session: ${session.title}`;
-      statsContainer.innerHTML = '';
+    for (const question of session.questions) {
+      const qDiv = document.createElement('div');
+      qDiv.className = 'question-block';
 
-      if (!Array.isArray(session.questions) || session.questions.length === 0) {
-        statsContainer.textContent = 'Keine Fragen vorhanden.';
-        return;
-      }
+      const title = document.createElement('div');
+      title.className = 'question-title';
+      title.textContent = question.text;
+      qDiv.appendChild(title);
 
-      session.questions.forEach(q => {
-        if(['stars','emoji','multiple-choice'].includes(q.type)) {
-          const stats = getResponseStats(feedbackDocs, q.id, q.type, q.options || []);
+      if (['stars', 'emoji', 'multiple-choice'].includes(question.type)) {
+        const stats = getResponseStats(feedbackDocs, question.id, question.type, question.options || []);
 
-          const qDiv = document.createElement('div');
-          qDiv.className = 'question-block';
-
-          const title = document.createElement('div');
-          title.className = 'question-title';
-          title.textContent = q.text;
-
+        if(stats.total > 0) {
           const statText = document.createElement('div');
+          statText.textContent = `${stats.total} Studierende haben abgestimmt.`;
           statText.className = 'stats';
-          if(stats.total > 0) {
-            statText.textContent = `${stats.total} Studierende haben abgestimmt: ${stats.distribution.join(', ')}`;
-          } else {
-            statText.textContent = 'Noch keine Abstimmungen';
-          }
-
-          qDiv.appendChild(title);
           qDiv.appendChild(statText);
-          statsContainer.appendChild(qDiv);
-        }
-      });
-    }
 
-    async function loadAndRender() {
-      try {
+          createChart(qDiv, question.type, stats);
+        } else {
+          const statText = document.createElement('div');
+          statText.textContent = 'Noch keine Abstimmungen';
+          qDiv.appendChild(statText);
+        }
+      } else if (question.type === 'text') {
+        const textDiv = document.createElement('div');
+        textDiv.className = 'text-responses';
+        const responses = feedbackDocs
+          .map(doc => doc.answers && doc.answers[question.id])
+          .filter(text => text && text.trim().length > 0);
+
+        if (responses.length > 0) {
+          responses.forEach(resp => {
+            const p = document.createElement('p');
+            p.className = 'response-item';
+            p.textContent = resp;
+            textDiv.appendChild(p);
+          });
+        } else {
+          textDiv.textContent = 'Noch keine Antworten';
+        }
+        qDiv.appendChild(textDiv);
+      }
+
+      statsContainer.appendChild(qDiv);
+    }
+  }
+
+  async function loadAndRender() {
+        try {
         const sessionId = getSessionId();
         if(!sessionId) throw new Error('Keine Session ID im Link');
 
@@ -137,13 +295,81 @@
         const feedbackDocs = await loadFeedbacks(sessionId);
 
         renderStats(session, feedbackDocs);
-      } catch(e) {
+        } catch(e) {
         alert('Fehler: ' + e.message);
-      }
+        }
     }
 
-    window.onload = loadAndRender;
-  </script>
+
+    
+    const downloadCsvBtn = document.getElementById('downloadCsvBtn');
+
+
+    function escapeCsvValue(value) {
+    if (typeof value === 'string') {
+        if (/[",\n]/.test(value)) {
+        return `"${value.replace(/"/g, '""')}"`;
+        }
+        return value;
+    }
+    return value;
+    }
+
+    function generateCsv(session, feedbackDocs) {
+    const headers = ['Feedback-ID', 'Timestamp', ...session.questions.map(q => q.text)];
+    const rows = feedbackDocs.map(doc => {
+        const row = [
+        doc._id || '',
+        doc.timestamp || ''
+        ];
+        session.questions.forEach(q => {
+        let ans = doc.answers ? doc.answers[q.id] : '';
+        if (ans == null) ans = '';
+        row.push(ans);
+        });
+        return row;
+    });
+
+    const csvContent = [
+        headers.join(','),
+        ...rows.map(row => row.map(escapeCsvValue).join(','))
+    ].join('\n');
+
+    return csvContent;
+    }
+
+    function downloadCsv(filename, csvContent) {
+    const blob = new Blob([csvContent], {type: 'text/csv;charset=utf-8;'});
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+    }
+
+    document.getElementById('downloadCsvBtn').addEventListener('click', async () => {
+    if (!sessionDoc || !sessionDoc.questions) {
+        alert('Sessiondaten sind noch nicht geladen.');
+        return;
+    }
+    
+    try {
+        const feedbackDocs = await loadFeedbacks(sessionDoc._id);
+        const csv = generateCsv(sessionDoc, feedbackDocs);
+        const safeTitle = sessionDoc.title.replace(/[^\w\s-]/g, '').replace(/\s+/g, '_');
+        downloadCsv(`${safeTitle}_feedback.csv`, csv);
+    } catch (err) {
+        alert('Fehler beim Erzeugen des CSV: ' + err.message);
+    }
+    });
+
+
+
+
+  window.onload = loadAndRender;
+</script>
 
 </body>
 </html>
