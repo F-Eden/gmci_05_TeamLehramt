@@ -150,6 +150,62 @@
       });
     }
 
+    // Funktion zum Kopieren einer Session
+    async function copySession(sessionId, sessionTitle) {
+      try {
+        // Session laden
+        const sessionRes = await fetch(`http://localhost:5984/gmci/${encodeURIComponent(sessionId)}`);
+        const session = await sessionRes.json();
+        
+        // Neuen Namen abfragen
+        const newName = prompt('Gib einen neuen Namen für die kopierte Session ein:', `${sessionTitle} (Kopie)`);
+        if (!newName) return;
+        
+        // Slugify den Namen für die ID
+        const slugify = (text) => {
+          return text.toString().toLowerCase()
+            .trim()
+            .replace(/\s+/g, '-')      
+            .replace(/[^\w\-]+/g, '')  
+            .replace(/\-\-+/g, '-');   
+        };
+        
+        const newId = slugify(newName);
+        
+        // Prüfen, ob Session mit neuem Namen bereits existiert
+        const headResponse = await fetch(`http://localhost:5984/gmci/${encodeURIComponent(newId)}`, { method: 'HEAD' });
+        if (headResponse.ok) {
+          alert('Ein Session mit diesem Namen existiert bereits! Bitte wähle einen anderen Namen.');
+          return;
+        }
+        
+        // Session kopieren (ohne Feedbacks und Chat-Nachrichten)
+        const newSession = {
+          _id: newId,
+          type: 'session',
+          title: newName,
+          questions: session.questions,
+          createdAt: new Date().toISOString()
+        };
+        
+        // Session speichern
+        const putResponse = await fetch(`http://localhost:5984/gmci/${encodeURIComponent(newId)}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newSession)
+        });
+        
+        if (putResponse.ok) {
+          alert('Session erfolgreich kopiert!');
+          loadSessions(); // Aktualisiere die Liste
+        } else {
+          const errorData = await putResponse.json();
+          alert('Fehler beim Kopieren: ' + (errorData.reason || putResponse.statusText));
+        }
+      } catch (err) {
+        alert('Fehler beim Kopieren der Session: ' + err.message);
+      }
+    }
 
     async function loadSessions() {
       try {
@@ -187,6 +243,26 @@
           // Icons container
           const iconsDiv = document.createElement('div');
           iconsDiv.classList.add('icons');
+
+          // Kopier-Icon (🔄) = Session kopieren
+          const copyIcon = document.createElement('span');
+          copyIcon.classList.add('icon-button');
+          copyIcon.title = 'Session kopieren';
+          copyIcon.textContent = '🔄';
+          copyIcon.addEventListener('click', (e) => {
+            e.stopPropagation();
+            copySession(session._id, session.title);
+          });
+
+          // Zahnrad Icon (⚙️) = Bearbeiten
+          const editIcon = document.createElement('span');
+          editIcon.classList.add('icon-button');
+          editIcon.title = 'Session bearbeiten';
+          editIcon.textContent = '⚙️';
+          editIcon.addEventListener('click', (e) => {
+            e.stopPropagation();
+            window.location.href = `editSession.html?id=${encodeURIComponent(session._id)}`;
+          });
 
           // Play Icon (▶️) = Starten
           const playIcon = document.createElement('span');
@@ -245,7 +321,9 @@
             }
           });
 
-          // Icons hinzufügen in Reihenfolge: Play - QR - Müll
+          // Icons hinzufügen in Reihenfolge: Copy - Edit - Play - Stats - QR - Müll
+          iconsDiv.appendChild(copyIcon);
+          iconsDiv.appendChild(editIcon);
           iconsDiv.appendChild(playIcon);
           iconsDiv.appendChild(statsIcon);
           iconsDiv.appendChild(qrIcon);
@@ -332,9 +410,6 @@
         throw error;
       }
     }
-
-
-
 
     window.addEventListener('load', loadSessions);
   </script>

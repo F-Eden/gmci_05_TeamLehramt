@@ -90,6 +90,28 @@
       padding: 5px 0;
       border-bottom: 1px solid #eee;
     }
+    /* Neue Styles für Sternbewertung */
+    .star-rating {
+      display: flex;
+      gap: 5px;
+      margin-top: 0.5rem;
+    }
+    .star {
+      font-size: 2rem;
+      cursor: pointer;
+      transition: transform 0.2s;
+      color: #ddd;
+    }
+    .star:hover {
+      transform: scale(1.2);
+    }
+    .star.filled {
+      color: #f1c40f;
+    }
+    .star.half-filled {
+      color: #f1c40f;
+      clip-path: inset(0 50% 0 0);
+    }
   </style>
 </head>
 <body>
@@ -111,6 +133,7 @@
     let isUserTyping = false;
     const form = document.getElementById('feedbackForm');
     const messageDiv = document.getElementById('message');
+    let sessionChangesSource = null; // Für Live-Updates
 
     function getSessionId() {
       const params = new URLSearchParams(window.location.search);
@@ -141,16 +164,59 @@
       let input;
 
       if (question.type === 'stars') {
-        input = document.createElement('select');
-        input.name = `q-${qIndex}`;
+        // NEU: Sternbewertung mit interaktiven Sternen
+        input = document.createElement('div');
         input.id = `q-${qIndex}`;
+        input.name = `q-${qIndex}`;
         input.required = true;
+        input.classList.add('star-rating-container');
+        
+        // Erstelle 5 leere Sterne
+        const starContainer = document.createElement('div');
+        starContainer.classList.add('star-rating');
+        
+        const stars = [];
         for (let i = 1; i <= 5; i++) {
-          const option = document.createElement('option');
-          option.value = i;
-          option.textContent = i;
-          input.appendChild(option);
+          const star = document.createElement('span');
+          star.classList.add('star');
+          star.textContent = '★';
+          star.dataset.value = i;
+          
+          star.addEventListener('click', function() {
+            // Setze alle Sterne bis zum geklickten Stern als gefüllt
+            stars.forEach((s, index) => {
+              if (index < i) {
+                s.classList.add('filled');
+                s.classList.remove('half-filled');
+              } else {
+                s.classList.remove('filled', 'half-filled');
+              }
+            });
+            
+            // Setze den Wert für das Formular
+            input.value = i;
+          });
+          
+          starContainer.appendChild(star);
+          stars.push(star);
         }
+        
+        // Verstecktes Input-Feld für das Formular
+        const hiddenInput = document.createElement('input');
+        hiddenInput.type = 'hidden';
+        hiddenInput.name = `q-${qIndex}`;
+        hiddenInput.id = `q-${qIndex}-hidden`;
+        input.appendChild(hiddenInput);
+        
+        input.appendChild(starContainer);
+        
+        // Setze den Wert beim Klick
+        input.addEventListener('click', function(e) {
+          if (e.target.classList.contains('star')) {
+            const value = parseInt(e.target.dataset.value);
+            hiddenInput.value = value;
+          }
+        });
       } else if (question.type === 'emoji') {
         input = document.createElement('div');
         input.id = `q-${qIndex}`;
@@ -220,8 +286,6 @@
       return container;
     }
 
-
-
     async function refresh() {
       if (isUserTyping) return;
 
@@ -268,6 +332,41 @@
       }
     }
 
+    // Funktion zum Einrichten von Live-Updates für Session-Änderungen
+    function setupSessionLiveUpdates() {
+      const sessionId = getSessionId();
+      if (!sessionId) return;
+
+      // Schließe bestehende Verbindung, falls vorhanden
+      if (sessionChangesSource) {
+        sessionChangesSource.close();
+      }
+
+      // Öffne neue EventSource-Verbindung
+      sessionChangesSource = new EventSource(`http://localhost:5984/gmci/_changes?feed=eventsource&since=now&include_docs=true`);
+      
+      sessionChangesSource.onmessage = event => {
+        const change = JSON.parse(event.data);
+        const doc = change.doc;
+        
+        // Prüfe, ob die Änderung zur aktuellen Session gehört
+        if (doc.type === 'session' && doc._id === sessionId) {
+          console.log('Session-Änderung erkannt, aktualisiere Fragen...');
+          refresh(); // Aktualisiere die Fragen automatisch
+        }
+        
+        // Auch für Chat-Nachrichten
+        if (doc.type === 'chat' && doc.sessionId === sessionId) {
+          // Chat-Updates werden bereits separat behandelt
+        }
+      };
+
+      sessionChangesSource.onerror = function(err) {
+        console.error('EventSource Fehler:', err);
+        // Versuche, die Verbindung neu aufzubauen
+        setTimeout(setupSessionLiveUpdates, 5000);
+      };
+    }
 
     form.addEventListener('submit', async function(e) {
       e.preventDefault();
@@ -422,6 +521,9 @@
     window.onload = () => {
       refresh(); // Erstes Laden der Feedbackfragen
       loadChatsStud(); // Lade auch vorhandene Chatnachrichten
+      
+      // NEU: Live-Updates für Session-Änderungen einrichten
+      setupSessionLiveUpdates();
     };
   </script>
 

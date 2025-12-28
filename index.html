@@ -69,12 +69,26 @@
       padding: 0.5rem 0;
       border-bottom: 1px solid #ddd;
       cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
     }
     .session-item:last-child {
       border-bottom: none;
     }
     .session-item:hover {
       background-color: #dcedc8;
+    }
+    .session-info {
+      flex-grow: 1;
+    }
+    .session-title {
+      font-weight: bold;
+    }
+    .session-date {
+      font-size: 0.9rem;
+      color: #666;
+      margin-top: 0.2rem;
     }
   </style>
 </head>
@@ -100,39 +114,61 @@
   </main>
 
   <script>
-    const couchUrl = 'http://localhost:5984/gmci/_find';
     const sessionsContainer = document.getElementById('sessionsContainer');
 
     async function loadSessions() {
-      const query = {
-        selector: { type: "session" },
-        sort: [{ createdAt: "desc" }]
-      };
-
       try {
-        const response = await fetch(couchUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(query)
-        });
-
+        // VERWENDE _all_docs wie in der Session-Seite
+        const response = await fetch('http://localhost:5984/gmci/_all_docs?include_docs=true');
         const data = await response.json();
+        
+        // Filtere nur Session-Dokumente
+        const sessions = data.rows
+          .filter(row => row.doc && row.doc.type === "session")
+          .sort((a, b) => new Date(b.doc.createdAt) - new Date(a.doc.createdAt))
+          .map(row => row.doc);
 
-        if (!data.docs || data.docs.length === 0) {
+        if (sessions.length === 0) {
           sessionsContainer.innerHTML = '<p>Keine Sessions gefunden.</p>';
           return;
         }
 
         sessionsContainer.innerHTML = '';
 
-        data.docs.forEach(session => {
+        sessions.forEach(session => {
           const div = document.createElement('div');
           div.classList.add('session-item');
-          div.textContent = session.title + " (" + new Date(session.createdAt).toLocaleDateString() + ")";
+          
+          // Erstelle einen Container für die Session-Informationen
+          const infoDiv = document.createElement('div');
+          infoDiv.classList.add('session-info');
+          
+          // Session-Titel
+          const titleSpan = document.createElement('span');
+          titleSpan.classList.add('session-title');
+          titleSpan.textContent = session.title;
+          infoDiv.appendChild(titleSpan);
+          
+          // Datum und Uhrzeit
+          const dateSpan = document.createElement('span');
+          dateSpan.classList.add('session-date');
+          const lastModified = new Date(session.createdAt);
+          const formattedTime = lastModified.toLocaleTimeString('de-DE', { 
+            hour: '2-digit', 
+            minute: '2-digit' 
+          });
+          const formattedDate = lastModified.toLocaleDateString('de-DE');
+          dateSpan.textContent = `(${formattedDate} ${formattedTime})`;
+          infoDiv.appendChild(dateSpan);
+          
+          div.appendChild(infoDiv);
+          
+          // Klick auf die gesamte Zeile = Bearbeiten
           div.addEventListener('click', () => {
             // Leitet zur Bearbeitungsseite weiter mit Session-ID
             window.location.href = `editSession.html?id=${encodeURIComponent(session._id)}`;
           });
+          
           sessionsContainer.appendChild(div);
         });
       } catch (error) {
