@@ -114,7 +114,7 @@
 </main>
 
 <script>
-  let sessionDoc = null;
+  let sessionDoc = null; // Globale Variable
   const sessionTitleDiv = document.getElementById('sessionTitle');
   const statsContainer = document.getElementById('statsContainer');
   let chartInstances = [];
@@ -287,58 +287,97 @@
   }
 
   async function loadAndRender() {
-        try {
-        const sessionId = getSessionId();
-        if(!sessionId) throw new Error('Keine Session ID im Link');
+    try {
+      const sessionId = getSessionId();
+      if(!sessionId) throw new Error('Keine Session ID im Link');
 
-        const session = await loadSession(sessionId);
-        const feedbackDocs = await loadFeedbacks(sessionId);
+      const session = await loadSession(sessionId);
+      const feedbackDocs = await loadFeedbacks(sessionId);
+      
+      // SPEICHERE SESSION GLOBAL
+      sessionDoc = session;
 
-        renderStats(session, feedbackDocs);
-        } catch(e) {
-        alert('Fehler: ' + e.message);
-        }
+      renderStats(session, feedbackDocs);
+    } catch(e) {
+      alert('Fehler: ' + e.message);
     }
+  }
 
-
+  // Funktion zum Konvertieren von Emojis und Symbolen
+  function convertSymbolToText(symbol) {
+    const symbolMap = {
+      '😞': 'schlecht',
+      '😐': 'mittel',
+      '😀': 'gut',
+      '⭐': 'Stern',
+      '★': 'Stern',
+      '☆': 'leerer Stern'
+    };
     
-    const downloadCsvBtn = document.getElementById('downloadCsvBtn');
+    return symbolMap[symbol] || symbol;
+  }
 
+  // Funktion zum Bereinigen von Texten für CSV
+  function cleanCsvText(text) {
+    if (typeof text !== 'string') return text;
+    
+    // Entferne oder ersetze problematische Zeichen
+    return text
+      .replace(/[\r\n\t]/g, ' ')  // Zeilenumbrüche und Tabs durch Leerzeichen
+      .replace(/"/g, '""')        // Doppelte Anführungszeichen escapen
+      .replace(/,/g, ';')         // Kommas durch Semikolons ersetzen (CSV-Trennzeichen)
+      .replace(/[\x00-\x1F\x7F]/g, ''); // Steuerzeichen entfernen
+  }
 
-    function escapeCsvValue(value) {
+  function escapeCsvValue(value) {
     if (typeof value === 'string') {
-        if (/[",\n]/.test(value)) {
-        return `"${value.replace(/"/g, '""')}"`;
-        }
-        return value;
+      // Bereinige den Text für CSV
+      const cleaned = cleanCsvText(value);
+      
+      // Wenn der Text Sonderzeichen enthält, umschließen wir ihn in Anführungszeichen
+      if (/[",\n;]/.test(cleaned)) {
+        return `"${cleaned.replace(/"/g, '""')}"`;
+      }
+      return cleaned;
     }
     return value;
-    }
+  }
 
-    function generateCsv(session, feedbackDocs) {
-    const headers = ['Feedback-ID', 'Timestamp', ...session.questions.map(q => q.text)];
+  function generateCsv(session, feedbackDocs) {
+    // Header mit UTF-8 BOM für Excel-Kompatibilität
+    const bom = '\uFEFF';
+    const headers = ['Feedback-ID', 'Timestamp', ...session.questions.map(q => cleanCsvText(q.text))];
+    
     const rows = feedbackDocs.map(doc => {
-        const row = [
+      const row = [
         doc._id || '',
         doc.timestamp || ''
-        ];
-        session.questions.forEach(q => {
+      ];
+      
+      session.questions.forEach(q => {
         let ans = doc.answers ? doc.answers[q.id] : '';
         if (ans == null) ans = '';
+        
+        // Konvertiere Symbole in lesbaren Text
+        if (typeof ans === 'string') {
+          ans = convertSymbolToText(ans);
+        }
+        
         row.push(ans);
-        });
-        return row;
+      });
+      
+      return row;
     });
 
     const csvContent = [
-        headers.join(','),
-        ...rows.map(row => row.map(escapeCsvValue).join(','))
+      headers.join(','),
+      ...rows.map(row => row.map(escapeCsvValue).join(','))
     ].join('\n');
 
-    return csvContent;
-    }
+    return bom + csvContent;
+  }
 
-    function downloadCsv(filename, csvContent) {
+  function downloadCsv(filename, csvContent) {
     const blob = new Blob([csvContent], {type: 'text/csv;charset=utf-8;'});
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
@@ -347,26 +386,25 @@
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(link.href);
-    }
+  }
 
-    document.getElementById('downloadCsvBtn').addEventListener('click', async () => {
+  // BUTTON EVENT LISTENER
+  document.getElementById('downloadCsvBtn').addEventListener('click', async () => {
+    // VERWENDE DIE GLOBALE SESSIONDOC
     if (!sessionDoc || !sessionDoc.questions) {
-        alert('Sessiondaten sind noch nicht geladen.');
-        return;
+      alert('Sessiondaten sind noch nicht geladen.');
+      return;
     }
     
     try {
-        const feedbackDocs = await loadFeedbacks(sessionDoc._id);
-        const csv = generateCsv(sessionDoc, feedbackDocs);
-        const safeTitle = sessionDoc.title.replace(/[^\w\s-]/g, '').replace(/\s+/g, '_');
-        downloadCsv(`${safeTitle}_feedback.csv`, csv);
+      const feedbackDocs = await loadFeedbacks(sessionDoc._id);
+      const csv = generateCsv(sessionDoc, feedbackDocs);
+      const safeTitle = sessionDoc.title.replace(/[^\w\s-]/g, '').replace(/\s+/g, '_');
+      downloadCsv(`${safeTitle}_feedback.csv`, csv);
     } catch (err) {
-        alert('Fehler beim Erzeugen des CSV: ' + err.message);
+      alert('Fehler beim Erzeugen des CSV: ' + err.message);
     }
-    });
-
-
-
+  });
 
   window.onload = loadAndRender;
 </script>
