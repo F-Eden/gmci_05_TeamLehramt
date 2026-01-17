@@ -347,64 +347,63 @@
 
   // Funktion zum Anzeigen der Statistiken
   function displayStatistics(question, stats) {
-    const statsContainer = document.getElementById(`stats-${question.id}`);
-    if (!statsContainer) return;
-    
-    const statData = stats[question.id];
-    if (!statData) {
-      statsContainer.innerHTML = '<p>Keine Statistiken verfügbar</p>';
-      return;
-    }
-    
-    let html = '<div class="stats-container">';
-    
-    switch(statData.type) {
-      case 'stars':
-        html += '<strong>Sternebewertung:</strong><br>';
-        for (let i = 1; i <= 5; i++) {
-          const count = statData.answers[i] || 0;
+  const statsContainer = document.getElementById(`stats-${question.id}`);
+  if (!statsContainer) return;
+
+  const statData = stats[question.id];
+  if (!statData) {
+    statsContainer.innerHTML = '<p>Keine Statistiken verfügbar</p>';
+    return;
+  }
+
+  let html = '';
+
+  switch(statData.type) {
+    case 'stars':
+      html += '<strong>Sternebewertung:</strong><br>';
+      for (let i = 1; i <= 5; i++) {
+        const count = statData.answers[i] || 0;
+        const percentage = statData.totalAnswers > 0 ? Math.round((count / statData.totalAnswers) * 100) : 0;
+        html += `<div class="stat-bar">
+          <span>${i}*</span>
+          <span class="stat-bar-fill" style="width: ${percentage}%"></span>
+          <span class="stat-percentage">${count} (${percentage}%)</span>
+        </div>`;
+      }
+      break;
+
+    case 'emoji':
+      html += '<strong>Emoji-Bewertung:</strong><br>';
+      ['😞', '😐', '😀'].forEach(emoji => {
+        const count = statData.answers[emoji] || 0;
+        const percentage = statData.totalAnswers > 0 ? Math.round((count / statData.totalAnswers) * 100) : 0;
+        html += `<div class="stat-bar">
+          <span class="stat-emoji">${emoji}</span>
+          <span class="stat-bar-fill" style="width: ${percentage}%"></span>
+          <span class="stat-percentage">${count} (${percentage}%)</span>
+        </div>`;
+      });
+      break;
+
+    case 'multiple-choice':
+      html += '<strong>Multiple Choice:</strong><br>';
+      if (question.options) {
+        question.options.forEach(option => {
+          const count = statData.answers[option] || 0;
           const percentage = statData.totalAnswers > 0 ? Math.round((count / statData.totalAnswers) * 100) : 0;
           html += `<div class="stat-bar">
-            <span>${i}*</span>
-            <span class="stat-bar-fill" style="width: ${percentage}%"></span>
-            <span class="stat-percentage">${count} (${percentage}%)</span>
-          </div>`;
-        }
-        break;
-        
-      case 'emoji':
-        html += '<strong>Emoji-Bewertung:</strong><br>';
-        const emojis = ['😞', '😐', '😀'];
-        emojis.forEach(emoji => {
-          const count = statData.answers[emoji] || 0;
-          const percentage = statData.totalAnswers > 0 ? Math.round((count / statData.totalAnswers) * 100) : 0;
-          html += `<div class="stat-bar">
-            <span class="stat-emoji">${emoji}</span>
+            <span>${option}</span>
             <span class="stat-bar-fill" style="width: ${percentage}%"></span>
             <span class="stat-percentage">${count} (${percentage}%)</span>
           </div>`;
         });
-        break;
-        
-      case 'multiple-choice':
-        html += '<strong>Multiple Choice:</strong><br>';
-        if (question.options) {
-          question.options.forEach(option => {
-            const count = statData.answers[option] || 0;
-            const percentage = statData.totalAnswers > 0 ? Math.round((count / statData.totalAnswers) * 100) : 0;
-            html += `<div class="stat-bar">
-              <span>${option}</span>
-              <span class="stat-bar-fill" style="width: ${percentage}%"></span>
-              <span class="stat-percentage">${count} (${percentage}%)</span>
-            </div>`;
-          });
-        }
-        break;
-    }
-    
-    html += '</div>';
-    statsContainer.innerHTML = html;
+      }
+      break;
   }
+
+  statsContainer.innerHTML = html;
+}
+
 
   // Funktion zum Aktualisieren aller Statistiken
   async function updateAllStatistics() {
