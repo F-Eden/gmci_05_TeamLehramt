@@ -6,57 +6,138 @@
   <style>
     body {
       font-family: Arial, sans-serif;
+      font-size: 20px;
       max-width: 600px;
       margin: 2rem auto;
       padding: 1rem;
     }
-    h1 {
-      text-align: center;
-    }
+    h1 { text-align: center; }
+
     .question {
       background: #f4f6f7;
-      border-radius: 8px;
-      padding: 1rem;
-      margin-bottom: 1rem;
+      border-radius: 10px;
+      padding: 1.2rem;
+      margin-bottom: 1.2rem;
     }
-    .question label {
+
+    .question > label {
       display: block;
       font-weight: bold;
-      margin-bottom: 0.5rem;
+      margin-bottom: 0.8rem;
     }
-    select, input[type="radio"], textarea {
-      margin-top: 0.3rem;
-    }
+
     textarea {
       width: 100%;
-      height: 80px;
+      height: 90px;
       box-sizing: border-box;
       resize: vertical;
-      padding: 0.5rem;
+      padding: 0.6rem;
+      border-radius: 6px;
+      border: 1px solid #ccc;
     }
+
+    select {
+      width: 100%;
+      padding: 0.6rem;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      background: #fff;
+    }
+
     .submit-btn {
       background-color: #27ae60;
       color: white;
       border: none;
-      padding: 0.7rem 2rem;
+      padding: 0.8rem 2.2rem;
       font-size: 1rem;
-      border-radius: 5px;
+      border-radius: 6px;
       cursor: pointer;
       display: block;
-      margin: 1rem auto;
+      margin: 1.5rem auto;
     }
-    .submit-btn:hover {
-      background-color: #219150;
-    }
+    .submit-btn:hover { background-color: #219150; }
+
     .message {
       text-align: center;
       font-weight: bold;
       margin-top: 1rem;
       color: green;
     }
-    .hidden {
-      display: none;
+    .hidden { display: none; }
+
+    /* ---------- Sterne (interaktiv) ---------- */
+    .star-rating {
+      display: flex;
+      gap: 6px;
+      margin-top: 0.6rem;
+      align-items: center;
     }
+    .star {
+      font-size: 2.2rem;
+      cursor: pointer;
+      transition: transform 0.15s;
+      color: #ddd;
+      user-select: none;
+    }
+    .star:hover { transform: scale(1.15); }
+    .star.filled { color: #f1c40f; }
+
+    /* ---------- Emoji-Kacheln (ganze Box klickbar) ---------- */
+    .emoji-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-top: 0.8rem;
+    }
+    .emoji-radio {
+      position: absolute;
+      opacity: 0;
+      pointer-events: none;
+    }
+    .emoji-tile {
+      border: 2px solid #e0e0e0;
+      border-radius: 18px;
+      background: #ffffff;
+      padding: 26px 14px;
+      min-height: 150px;
+
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+
+      cursor: pointer;
+      user-select: none;
+
+      transition: transform 0.15s ease,
+                  border-color 0.15s ease,
+                  box-shadow 0.15s ease,
+                  background-color 0.15s ease;
+    }
+    .emoji-tile:hover {
+      transform: translateY(-3px);
+      border-color: #bcdcff;
+      background: #fbfdff;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+    }
+    .emoji-icon {
+      font-size: 3.6rem;
+      line-height: 1;
+      margin-bottom: 14px;
+    }
+    .emoji-text {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #444;
+    }
+    .emoji-radio:checked + .emoji-tile {
+      border-color: #2980b9;
+      background: #f2f8ff;
+      box-shadow: 0 0 0 4px rgba(41,128,185,0.2);
+    }
+
+    /* ---------- Chat ---------- */
     #chatContainer {
       border: 1px solid #ccc;
       height: 250px;
@@ -66,7 +147,7 @@
       background: #fafafa;
     }
     #chatInput {
-      width: 80%;
+      width: 78%;
       padding: 0.5rem;
       font-size: 1rem;
       box-sizing: border-box;
@@ -83,40 +164,14 @@
       border-radius: 4px;
       margin-left: 5px;
     }
-    #sendChatBtn:hover {
-      background-color: #2771a3;
-    }
-    .chat-message {
-      padding: 5px 0;
-      border-bottom: 1px solid #eee;
-    }
-    /* Neue Styles für Sternbewertung */
-    .star-rating {
-      display: flex;
-      gap: 5px;
-      margin-top: 0.5rem;
-    }
-    .star {
-      font-size: 2rem;
-      cursor: pointer;
-      transition: transform 0.2s;
-      color: #ddd;
-    }
-    .star:hover {
-      transform: scale(1.2);
-    }
-    .star.filled {
-      color: #f1c40f;
-    }
-    .star.half-filled {
-      color: #f1c40f;
-      clip-path: inset(0 50% 0 0);
-    }
+    #sendChatBtn:hover { background-color: #2771a3; }
+    .chat-message { padding: 5px 0; border-bottom: 1px solid #eee; }
   </style>
 </head>
 <body>
 
   <h1>Feedback zur Session</h1>
+
   <form id="feedbackForm">
     <div id="questionsContainer"></div>
     <button type="submit" class="submit-btn">Feedback abschicken</button>
@@ -133,7 +188,7 @@
     let isUserTyping = false;
     const form = document.getElementById('feedbackForm');
     const messageDiv = document.getElementById('message');
-    let sessionChangesSource = null; // Für Live-Updates
+    let sessionChangesSource = null;
 
     function getSessionId() {
       const params = new URLSearchParams(window.location.search);
@@ -141,15 +196,9 @@
     }
 
     async function loadSession(sessionId) {
-      try {
-        const res = await fetch(`http://localhost:5984/gmci/${encodeURIComponent(sessionId)}`);
-        if (!res.ok) throw new Error('Session nicht gefunden');
-        const session = await res.json();
-        return session;
-      } catch (err) {
-        alert('Fehler beim Laden der Session: ' + err.message);
-        throw err;
-      }
+      const res = await fetch(`http://localhost:5984/gmci/${encodeURIComponent(sessionId)}`);
+      if (!res.ok) throw new Error('Session nicht gefunden');
+      return await res.json();
     }
 
     function createQuestionInput(question, qIndex) {
@@ -157,127 +206,114 @@
       container.classList.add('question');
 
       const label = document.createElement('label');
-      label.setAttribute('for', `q-${qIndex}`);
       label.textContent = question.text;
       container.appendChild(label);
 
       let input;
 
       if (question.type === 'stars') {
-        // NEU: Sternbewertung mit interaktiven Sternen
         input = document.createElement('div');
-        input.id = `q-${qIndex}`;
-        input.name = `q-${qIndex}`;
-        input.required = true;
-        input.classList.add('star-rating-container');
-        
-        // Erstelle 5 leere Sterne
+
         const starContainer = document.createElement('div');
         starContainer.classList.add('star-rating');
-        
+
+        const hiddenInput = document.createElement('input');
+        hiddenInput.type = 'hidden';
+        hiddenInput.name = `q-${qIndex}`;
+        hiddenInput.id = `q-${qIndex}-hidden`;
+        hiddenInput.required = true;
+
         const stars = [];
         for (let i = 1; i <= 5; i++) {
           const star = document.createElement('span');
           star.classList.add('star');
           star.textContent = '★';
           star.dataset.value = i;
-          
-          star.addEventListener('click', function() {
-            // Setze alle Sterne bis zum geklickten Stern als gefüllt
-            stars.forEach((s, index) => {
-              if (index < i) {
-                s.classList.add('filled');
-                s.classList.remove('half-filled');
-              } else {
-                s.classList.remove('filled', 'half-filled');
-              }
+
+          star.addEventListener('click', () => {
+            stars.forEach((s, idx) => {
+              if (idx < i) s.classList.add('filled');
+              else s.classList.remove('filled');
             });
-            
-            // Setze den Wert für das Formular
-            input.value = i;
+            hiddenInput.value = String(i);
           });
-          
-          starContainer.appendChild(star);
+
           stars.push(star);
+          starContainer.appendChild(star);
         }
-        
-        // Verstecktes Input-Feld für das Formular
-        const hiddenInput = document.createElement('input');
-        hiddenInput.type = 'hidden';
-        hiddenInput.name = `q-${qIndex}`;
-        hiddenInput.id = `q-${qIndex}-hidden`;
+
         input.appendChild(hiddenInput);
-        
         input.appendChild(starContainer);
-        
-        // Setze den Wert beim Klick
-        input.addEventListener('click', function(e) {
-          if (e.target.classList.contains('star')) {
-            const value = parseInt(e.target.dataset.value);
-            hiddenInput.value = value;
-          }
-        });
+
       } else if (question.type === 'emoji') {
         input = document.createElement('div');
-        input.id = `q-${qIndex}`;
-        input.name = `q-${qIndex}`;
-        input.required = true;
+        input.classList.add('emoji-grid');
 
-        const emojis = ['😞', '😐', '😀'];
-        emojis.forEach((emoji, idx) => {
+        const emojiOptions = [
+          { value: '😞', label: 'Schlecht' },
+          { value: '😐', label: 'Neutral' },
+          { value: '😄', label: 'Gut' }
+        ];
+
+        emojiOptions.forEach((opt, idx) => {
           const radioId = `q-${qIndex}-${idx}`;
 
           const radio = document.createElement('input');
           radio.type = 'radio';
           radio.id = radioId;
           radio.name = `q-${qIndex}`;
-          radio.value = emoji;
+          radio.value = opt.value;
           radio.required = true;
+          radio.classList.add('emoji-radio');
 
-          const labelRadio = document.createElement('label');
-          labelRadio.htmlFor = radioId;
-          labelRadio.textContent = emoji;
-          labelRadio.style.fontSize = '1.5rem';
-          labelRadio.style.marginRight = '1rem';
-          labelRadio.style.cursor = 'pointer';
+          const tile = document.createElement('label');
+          tile.htmlFor = radioId;
+          tile.classList.add('emoji-tile');
+
+          const emojiSpan = document.createElement('div');
+          emojiSpan.classList.add('emoji-icon');
+          emojiSpan.textContent = opt.value;
+
+          const textSpan = document.createElement('div');
+          textSpan.classList.add('emoji-text');
+          textSpan.textContent = opt.label;
+
+          tile.appendChild(emojiSpan);
+          tile.appendChild(textSpan);
 
           input.appendChild(radio);
-          input.appendChild(labelRadio);
+          input.appendChild(tile);
         });
-      } else if (question.type === 'text') {
-        input = document.createElement('textarea');
-        input.id = `q-${qIndex}`;
-        input.name = `q-${qIndex}`;
-        input.rows = 4;
-        input.placeholder = 'Deine Antwort...';
-        input.required = true;
+
       } else if (question.type === 'multiple-choice') {
-        // CORRECTED: Multiple Choice sollte eine Select-Box sein
         input = document.createElement('select');
         input.name = `q-${qIndex}`;
-        input.id = `q-${qIndex}`;
         input.required = true;
-        
-        // Optionen hinzufügen
-        const option = document.createElement('option');
-        option.value = '';
-        option.textContent = 'Bitte wählen...';
-        option.disabled = true;
-        option.selected = true;
-        input.appendChild(option);
-        
-        if (question.options && question.options.length > 0) {
-          question.options.forEach(optionValue => {
-            const option = document.createElement('option');
-            option.value = optionValue;
-            option.textContent = optionValue;
-            input.appendChild(option);
+
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'Bitte wählen...';
+        placeholder.disabled = true;
+        placeholder.selected = true;
+        input.appendChild(placeholder);
+
+        if (Array.isArray(question.options)) {
+          question.options.forEach(opt => {
+            const o = document.createElement('option');
+            o.value = opt;
+            o.textContent = opt;
+            input.appendChild(o);
           });
         }
+
+      } else if (question.type === 'text') {
+        input = document.createElement('textarea');
+        input.name = `q-${qIndex}`;
+        input.placeholder = 'Deine Antwort...';
+        input.required = true;
       } else {
         input = document.createElement('input');
         input.type = 'text';
-        input.id = `q-${qIndex}`;
         input.name = `q-${qIndex}`;
         input.required = true;
       }
@@ -293,77 +329,57 @@
       if (!sessionId) return;
 
       try {
-          const session = await loadSession(sessionId);
-          const questionsContainer = document.getElementById('questionsContainer');
-          questionsContainer.innerHTML = '';
+        const session = await loadSession(sessionId);
+        const questionsContainer = document.getElementById('questionsContainer');
+        questionsContainer.innerHTML = '';
 
-          // Sicherstellen, dass unlockedQuestions ein Array ist
-          const unlockedIds = Array.isArray(session.unlockedQuestions) ? session.unlockedQuestions : [];
-          
-          console.log('Session:', session);
-          console.log('Unlocked Questions:', unlockedIds);
+        const unlockedIds = Array.isArray(session.unlockedQuestions) ? session.unlockedQuestions : [];
 
-          if (!Array.isArray(session.questions) || session.questions.length === 0) {
-              questionsContainer.innerHTML = '<p>Zurzeit sind keine Fragen zum Feedback verfügbar.</p>';
-              document.querySelector('button[type=submit]').disabled = true;
-              return;
+        if (!Array.isArray(session.questions) || session.questions.length === 0) {
+          questionsContainer.innerHTML = '<p>Zurzeit sind keine Fragen zum Feedback verfügbar.</p>';
+          document.querySelector('button[type=submit]').disabled = true;
+          return;
+        }
+
+        let hasUnlockedQuestions = false;
+
+        session.questions.forEach((q, i) => {
+          if (unlockedIds.includes(q.id)) {
+            questionsContainer.appendChild(createQuestionInput(q, i));
+            hasUnlockedQuestions = true;
           }
+        });
 
-          let hasUnlockedQuestions = false;
-          
-          session.questions.forEach((q, i) => {
-              // Nur Fragen anzeigen, die freigeschaltet sind
-              if (unlockedIds.includes(q.id)) {
-                  const questionInput = createQuestionInput(q, i);
-                  questionsContainer.appendChild(questionInput);
-                  hasUnlockedQuestions = true;
-              }
-          });
-
-          if (!hasUnlockedQuestions && session.questions.length > 0) {
-              questionsContainer.innerHTML = '<p>Zurzeit sind keine Fragen zum Feedback freigegeben.</p>';
-              document.querySelector('button[type=submit]').disabled = true;
-          } else if (hasUnlockedQuestions) {
-              document.querySelector('button[type=submit]').disabled = false;
-          }
+        if (!hasUnlockedQuestions && session.questions.length > 0) {
+          questionsContainer.innerHTML = '<p>Zurzeit sind keine Fragen zum Feedback freigegeben.</p>';
+          document.querySelector('button[type=submit]').disabled = true;
+        } else {
+          document.querySelector('button[type=submit]').disabled = false;
+        }
 
       } catch (error) {
-          console.error("Fehler beim Aktualisieren: ", error);
+        console.error("Fehler beim Aktualisieren: ", error);
       }
     }
 
-    // Funktion zum Einrichten von Live-Updates für Session-Änderungen
     function setupSessionLiveUpdates() {
       const sessionId = getSessionId();
       if (!sessionId) return;
 
-      // Schließe bestehende Verbindung, falls vorhanden
-      if (sessionChangesSource) {
-        sessionChangesSource.close();
-      }
+      if (sessionChangesSource) sessionChangesSource.close();
 
-      // Öffne neue EventSource-Verbindung
       sessionChangesSource = new EventSource(`http://localhost:5984/gmci/_changes?feed=eventsource&since=now&include_docs=true`);
-      
+
       sessionChangesSource.onmessage = event => {
         const change = JSON.parse(event.data);
         const doc = change.doc;
-        
-        // Prüfe, ob die Änderung zur aktuellen Session gehört
-        if (doc.type === 'session' && doc._id === sessionId) {
-          console.log('Session-Änderung erkannt, aktualisiere Fragen...');
-          refresh(); // Aktualisiere die Fragen automatisch
-        }
-        
-        // Auch für Chat-Nachrichten
-        if (doc.type === 'chat' && doc.sessionId === sessionId) {
-          // Chat-Updates werden bereits separat behandelt
+
+        if (doc && doc.type === 'session' && doc._id === sessionId) {
+          refresh();
         }
       };
 
-      sessionChangesSource.onerror = function(err) {
-        console.error('EventSource Fehler:', err);
-        // Versuche, die Verbindung neu aufzubauen
+      sessionChangesSource.onerror = () => {
         setTimeout(setupSessionLiveUpdates, 5000);
       };
     }
@@ -371,46 +387,32 @@
     form.addEventListener('submit', async function(e) {
       e.preventDefault();
 
-      const formData = new FormData(form);
-      let answers = {};
-      
-      // Hier müssen wir die korrekten Keys verwenden
-      // Wir verwenden die echten Frage-IDs aus der Session
       const sessionId = getSessionId();
-      
+      if (!sessionId) return;
+
+      const formData = new FormData(form);
+
       try {
-        // Session laden, um die echten Frage-IDs zu erhalten
-        const sessionRes = await fetch(`http://localhost:5984/gmci/${encodeURIComponent(sessionId)}`);
-        const session = await sessionRes.json();
-        
-        // Map für die Key-Zuordnung
+        const session = await loadSession(sessionId);
+
         const questionIdMap = {};
         session.questions.forEach((question, index) => {
           questionIdMap[`q-${index}`] = question.id;
         });
-        
-        // Jetzt die Antworten mit korrekten Keys erstellen
+
+        const answers = {};
         for (const [key, value] of formData.entries()) {
-          // Wenn der Key mit q- beginnt, ersetze ihn durch die echte Frage-ID
           if (key.startsWith('q-')) {
             const realQuestionId = questionIdMap[key];
-            if (realQuestionId) {
-              answers[realQuestionId] = value;
-            } else {
-              answers[key] = value; // Fallback
-            }
-          } else {
-            answers[key] = value;
+            if (realQuestionId) answers[realQuestionId] = value;
           }
         }
-        
-        console.log('Sende Feedback mit korrekten Antworten:', answers);
 
         const feedbackDoc = {
           type: 'feedback',
-          sessionId: getSessionId(),
+          sessionId,
           timestamp: new Date().toISOString(),
-          answers: answers
+          answers
         };
 
         const response = await fetch('http://localhost:5984/gmci', {
@@ -428,22 +430,16 @@
         messageDiv.textContent = 'Danke für dein Feedback!';
         messageDiv.classList.remove('hidden');
         form.reset();
-
-        // Fragen neu laden, damit sie wieder angezeigt werden
         refresh();
 
-        // Nachricht nach 2 Sekunden ausblenden
-        setTimeout(() => {
-          messageDiv.classList.add('hidden');
-        }, 2000);
+        setTimeout(() => messageDiv.classList.add('hidden'), 2000);
 
       } catch (err) {
         alert('Fehler bei der Verbindung: ' + err.message);
       }
     });
 
-    // Chat Funktionen
-
+    /* ---------- Chat ---------- */
     const chatContainerStud = document.getElementById('chatContainer');
     const chatInputStud = document.getElementById('chatInput');
     const sendChatBtn = document.getElementById('sendChatBtn');
@@ -468,14 +464,14 @@
         body: JSON.stringify(mangoQuery)
       });
       const data = await res.json();
-      data.docs.forEach(chat => addChatMessageStud(chat.message, chat.fromModerator));
+      (data.docs || []).forEach(chat => addChatMessageStud(chat.message, chat.fromModerator));
     }
 
     const sourceStud = new EventSource(`http://localhost:5984/gmci/_changes?feed=eventsource&since=now&include_docs=true`);
     sourceStud.onmessage = event => {
       const change = JSON.parse(event.data);
       const doc = change.doc;
-      if (doc.type === 'chat' && doc.sessionId === getSessionId()) {
+      if (doc && doc.type === 'chat' && doc.sessionId === getSessionId()) {
         addChatMessageStud(doc.message, !!doc.fromModerator);
       }
     };
@@ -489,43 +485,32 @@
         sessionId: getSessionId(),
         timestamp: new Date().toISOString(),
         fromModerator: false,
-        message: message
+        message
       };
 
-      try {
-        const res = await fetch('http://localhost:5984/gmci', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify(chatDoc)
-        });
-        if (!res.ok) {
-          alert('Fehler beim Senden der Nachricht!');
-        } else {
-          chatInputStud.value = '';
-        }
-      } catch(e) {
-        alert('Netzwerkfehler beim Senden!');
-        console.error(e);
-      }
+      const res = await fetch('http://localhost:5984/gmci', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(chatDoc)
+      });
+
+      if (!res.ok) alert('Fehler beim Senden der Nachricht!');
+      else chatInputStud.value = '';
     }
 
     sendChatBtn.addEventListener('click', sendUserMessage);
-
     chatInputStud.addEventListener('keypress', e => {
-      if(e.key === 'Enter') {
+      if (e.key === 'Enter') {
         e.preventDefault();
         sendUserMessage();
       }
     });
 
     window.onload = () => {
-      refresh(); // Erstes Laden der Feedbackfragen
-      loadChatsStud(); // Lade auch vorhandene Chatnachrichten
-      
-      // NEU: Live-Updates für Session-Änderungen einrichten
+      refresh();
+      loadChatsStud();
       setupSessionLiveUpdates();
     };
   </script>
-
 </body>
 </html>

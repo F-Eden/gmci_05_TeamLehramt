@@ -6,6 +6,7 @@
 <style>
   body {
     font-family: Arial, sans-serif;
+    font-size: 20px;
     max-width: 700px;
     margin: 1rem auto;
     padding: 1rem;
@@ -106,6 +107,16 @@
     font-size: 1.2rem;
     margin-right: 0.5rem;
   }
+
+  /* Für Textantworten im Dashboard */
+  .text-answers {
+    margin: 0.6rem 0 0;
+    padding-left: 18px;
+  }
+  .text-answers li {
+    margin-bottom: 6px;
+    word-break: break-word;
+  }
 </style>
 </head>
 <body>
@@ -151,8 +162,10 @@
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify(mangoQuery)
     });
+
     const data = await res.json();
-    data.docs.forEach(chat => addChatMessage(chat.message, chat.fromModerator));
+    const docs = data && Array.isArray(data.docs) ? data.docs : [];
+    docs.forEach(chat => addChatMessage(chat.message, chat.fromModerator));
   }
 
   // Chatnachricht senden (Moderator)
@@ -191,7 +204,7 @@
     }
   });
 
-  // Sessionanzeigen, Frage freischalten usw. bleiben unverändert
+  // Sessionanzeigen, Frage freischalten usw.
   const questionList = document.getElementById('questionList');
   const sessionTitleDiv = document.getElementById('sessionTitle');
   const statusMessage = document.getElementById('statusMessage');
@@ -223,11 +236,9 @@
     return Array.isArray(sessionDoc.unlockedQuestions) && sessionDoc.unlockedQuestions.includes(qId);
   }
 
-  // In liveDashboard.html, ändere saveSessionDoc():
   async function saveSessionDoc() {
     if (!sessionDoc || !sessionDoc._id) return;
     try {
-      // Sicherstellen, dass _rev vorhanden ist
       if (!sessionDoc._rev) {
         const currentRes = await fetch(`http://localhost:5984/gmci/${encodeURIComponent(sessionDoc._id)}`);
         if (currentRes.ok) {
@@ -235,29 +246,27 @@
           sessionDoc._rev = currentDoc._rev;
         }
       }
-      
+
       const res = await fetch(`http://localhost:5984/gmci/${encodeURIComponent(sessionDoc._id)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(sessionDoc)
       });
-      
+
       if (!res.ok) {
         const error = await res.json();
         statusMessage.textContent = 'Fehler beim Speichern: ' + (error.reason || res.statusText);
         return false;
       }
-      
+
       const data = await res.json();
       sessionDoc._rev = data.rev;
       statusMessage.textContent = 'Speicherung erfolgreich ✔';
       setTimeout(() => statusMessage.textContent = '', 3000);
-      
-      // NEU: Sofortige Aktualisierung der Studentenseite
-      // Wir können das über einen EventSource-Feed lösen
+
       updateAnswerCounts();
       updateAllStatistics();
-      
+
       return true;
     } catch (e) {
       statusMessage.textContent = 'Netzwerkfehler beim Speichern';
@@ -265,16 +274,26 @@
       return false;
     }
   }
+
+  // Escape (für Textausgaben)
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
   // Funktion zum Berechnen der Statistiken
   async function calculateStatistics() {
     if (!sessionDoc || !Array.isArray(sessionDoc.questions)) return;
-    
+
     try {
-      // Alle Feedbacks für diese Session laden
       const feedbackQuery = {
-        selector: { 
+        selector: {
           type: 'feedback',
-          sessionId: sessionId 
+          sessionId: sessionId
         }
       };
 
@@ -283,32 +302,31 @@
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify(feedbackQuery)
       });
-      
+
       const data = await res.json();
-      const feedbackDocs = data.docs || [];
-      
-      // Statistik für jede Frage berechnen
+      const feedbackDocs = data && Array.isArray(data.docs) ? data.docs : [];
+
       const stats = {};
-      
+
       sessionDoc.questions.forEach(question => {
         stats[question.id] = {
           type: question.type,
           totalAnswers: 0,
           answers: {}
         };
-        
-        // Initialisiere Antworten für jeden Typ
+
         switch(question.type) {
           case 'stars':
-            for (let i = 1; i <= 5; i++) {
-              stats[question.id].answers[i] = 0;
-            }
+            for (let i = 1; i <= 5; i++) stats[question.id].answers[i] = 0;
             break;
+
           case 'emoji':
+            // WICHTIG: exakt die Emojis, die Studis senden: 😞 😐 😄
             stats[question.id].answers['😞'] = 0;
             stats[question.id].answers['😐'] = 0;
-            stats[question.id].answers['😀'] = 0;
+            stats[question.id].answers['😄'] = 0;
             break;
+
           case 'multiple-choice':
             if (question.options) {
               question.options.forEach(option => {
@@ -316,29 +334,42 @@
               });
             }
             break;
+
+          case 'text':
+            // Textantworten sammeln wir als Array
+            stats[question.id].answers = [];
+            break;
         }
       });
-      
-      // Feedbacks verarbeiten
+
       feedbackDocs.forEach(feedback => {
-        if (feedback.answers) {
-          Object.keys(feedback.answers).forEach(questionId => {
-            const answer = feedback.answers[questionId];
-            if (stats[questionId]) {
-              stats[questionId].totalAnswers++;
-              if (stats[questionId].answers.hasOwnProperty(answer)) {
-                stats[questionId].answers[answer]++;
-              } else if (stats[questionId].type === 'stars' && !isNaN(answer)) {
-                // Für Sternebewertung
-                stats[questionId].answers[answer]++;
-              }
+        if (!feedback.answers) return;
+
+        Object.keys(feedback.answers).forEach(questionId => {
+          const answer = feedback.answers[questionId];
+          if (!stats[questionId]) return;
+
+          stats[questionId].totalAnswers++;
+
+          // TEXT: sammeln statt Balken
+          if (stats[questionId].type === 'text') {
+            if (typeof answer === 'string' && answer.trim() !== '') {
+              stats[questionId].answers.push(answer.trim());
             }
-          });
-        }
+            return;
+          }
+
+          // Andere Typen: zählen
+          if (stats[questionId].answers && Object.prototype.hasOwnProperty.call(stats[questionId].answers, answer)) {
+            stats[questionId].answers[answer]++;
+          } else if (stats[questionId].type === 'stars' && !isNaN(answer)) {
+            stats[questionId].answers[answer]++;
+          }
+        });
       });
-      
+
       return stats;
-      
+
     } catch (error) {
       console.error('Fehler beim Berechnen der Statistiken:', error);
       return {};
@@ -347,73 +378,85 @@
 
   // Funktion zum Anzeigen der Statistiken
   function displayStatistics(question, stats) {
-  const statsContainer = document.getElementById(`stats-${question.id}`);
-  if (!statsContainer) return;
+    const statsContainer = document.getElementById(`stats-${question.id}`);
+    if (!statsContainer) return;
 
-  const statData = stats[question.id];
-  if (!statData) {
-    statsContainer.innerHTML = '<p>Keine Statistiken verfügbar</p>';
-    return;
-  }
+    const statData = stats[question.id];
+    if (!statData) {
+      statsContainer.innerHTML = '<p>Keine Statistiken verfügbar</p>';
+      return;
+    }
 
-  let html = '';
+    let html = '';
 
-  switch(statData.type) {
-    case 'stars':
-      html += '<strong>Sternebewertung:</strong><br>';
-      for (let i = 1; i <= 5; i++) {
-        const count = statData.answers[i] || 0;
-        const percentage = statData.totalAnswers > 0 ? Math.round((count / statData.totalAnswers) * 100) : 0;
-        html += `<div class="stat-bar">
-          <span>${i}*</span>
-          <span class="stat-bar-fill" style="width: ${percentage}%"></span>
-          <span class="stat-percentage">${count} (${percentage}%)</span>
-        </div>`;
-      }
-      break;
-
-    case 'emoji':
-      html += '<strong>Emoji-Bewertung:</strong><br>';
-      ['😞', '😐', '😀'].forEach(emoji => {
-        const count = statData.answers[emoji] || 0;
-        const percentage = statData.totalAnswers > 0 ? Math.round((count / statData.totalAnswers) * 100) : 0;
-        html += `<div class="stat-bar">
-          <span class="stat-emoji">${emoji}</span>
-          <span class="stat-bar-fill" style="width: ${percentage}%"></span>
-          <span class="stat-percentage">${count} (${percentage}%)</span>
-        </div>`;
-      });
-      break;
-
-    case 'multiple-choice':
-      html += '<strong>Multiple Choice:</strong><br>';
-      if (question.options) {
-        question.options.forEach(option => {
-          const count = statData.answers[option] || 0;
+    switch(statData.type) {
+      case 'stars':
+        html += '<strong>Sternebewertung:</strong><br>';
+        for (let i = 1; i <= 5; i++) {
+          const count = statData.answers[i] || 0;
           const percentage = statData.totalAnswers > 0 ? Math.round((count / statData.totalAnswers) * 100) : 0;
           html += `<div class="stat-bar">
-            <span>${option}</span>
+            <span>${i}*</span>
+            <span class="stat-bar-fill" style="width: ${percentage}%"></span>
+            <span class="stat-percentage">${count} (${percentage}%)</span>
+          </div>`;
+        }
+        break;
+
+      case 'emoji':
+        html += '<strong>Emoji-Bewertung:</strong><br>';
+        ['😞', '😐', '😄'].forEach(emoji => {
+          const count = statData.answers[emoji] || 0;
+          const percentage = statData.totalAnswers > 0 ? Math.round((count / statData.totalAnswers) * 100) : 0;
+          html += `<div class="stat-bar">
+            <span class="stat-emoji">${emoji}</span>
             <span class="stat-bar-fill" style="width: ${percentage}%"></span>
             <span class="stat-percentage">${count} (${percentage}%)</span>
           </div>`;
         });
-      }
-      break;
+        break;
+
+      case 'multiple-choice':
+        html += '<strong>Multiple Choice:</strong><br>';
+        if (question.options) {
+          question.options.forEach(option => {
+            const count = statData.answers[option] || 0;
+            const percentage = statData.totalAnswers > 0 ? Math.round((count / statData.totalAnswers) * 100) : 0;
+            html += `<div class="stat-bar">
+              <span>${escapeHtml(option)}</span>
+              <span class="stat-bar-fill" style="width: ${percentage}%"></span>
+              <span class="stat-percentage">${count} (${percentage}%)</span>
+            </div>`;
+          });
+        }
+        break;
+
+      case 'text':
+        html += '<strong>Textantworten:</strong><br>';
+        if (!Array.isArray(statData.answers) || statData.answers.length === 0) {
+          html += `<div class="stat-bar"><em>Noch keine Textantworten</em></div>`;
+        } else {
+          const last = statData.answers.slice(-5).reverse();
+          html += `<ul class="text-answers">`;
+          last.forEach(t => {
+            html += `<li>${escapeHtml(t)}</li>`;
+          });
+          html += `</ul>`;
+        }
+        break;
+
+      default:
+        html += '<em>Keine Anzeige für diesen Fragetyp</em>';
+        break;
+    }
+
+    statsContainer.innerHTML = html;
   }
 
-  statsContainer.innerHTML = html;
-}
-
-
-  // Funktion zum Aktualisieren aller Statistiken
   async function updateAllStatistics() {
     if (!sessionDoc || !Array.isArray(sessionDoc.questions)) return;
-    
     const stats = await calculateStatistics();
-    
-    sessionDoc.questions.forEach(question => {
-      displayStatistics(question, stats);
-    });
+    sessionDoc.questions.forEach(question => displayStatistics(question, stats));
   }
 
   function renderQuestions() {
@@ -432,7 +475,6 @@
       label.classList.add('question-text');
       label.textContent = question.text;
 
-      // Antwort-Zähler hinzufügen
       const countSpan = document.createElement('span');
       countSpan.id = `answer-count-${question.id}`;
       countSpan.classList.add('answer-count');
@@ -445,9 +487,8 @@
 
       checkbox.addEventListener('change', async () => {
         statusMessage.textContent = 'Speichere Änderung...';
-        if (!Array.isArray(sessionDoc.unlockedQuestions)) {
-          sessionDoc.unlockedQuestions = [];
-        }
+        if (!Array.isArray(sessionDoc.unlockedQuestions)) sessionDoc.unlockedQuestions = [];
+
         if (checkbox.checked) {
           if (!sessionDoc.unlockedQuestions.includes(question.id)) {
             sessionDoc.unlockedQuestions.push(question.id);
@@ -455,44 +496,39 @@
         } else {
           sessionDoc.unlockedQuestions = sessionDoc.unlockedQuestions.filter(id => id !== question.id);
         }
+
         const success = await saveSessionDoc();
-        if (!success) {
-          checkbox.checked = !checkbox.checked;
-        }
+        if (!success) checkbox.checked = !checkbox.checked;
       });
 
       div.appendChild(label);
-      div.appendChild(countSpan); // Zähler hinzufügen
+      div.appendChild(countSpan);
       div.appendChild(checkbox);
-      
-      // Statistik-Container hinzufügen
+
       const statsDiv = document.createElement('div');
       statsDiv.id = `stats-${question.id}`;
       statsDiv.classList.add('stats-container');
       statsDiv.style.marginTop = '1rem';
       statsDiv.innerHTML = '<em>Lade Statistiken...</em>';
       div.appendChild(statsDiv);
-      
+
       questionList.appendChild(div);
     });
-    
-    // Initialen Zählerstand und Statistiken aktualisieren
+
     setTimeout(async () => {
       updateAllStatistics();
       updateAnswerCounts();
     }, 100);
   }
 
-  // Funktion zum Zählen der Antworten pro Frage
   async function updateAnswerCounts() {
     if (!sessionDoc || !Array.isArray(sessionDoc.questions)) return;
-    
+
     try {
-      // Alle Feedbacks für diese Session laden
       const feedbackQuery = {
-        selector: { 
+        selector: {
           type: 'feedback',
-          sessionId: sessionId 
+          sessionId: sessionId
         }
       };
 
@@ -501,69 +537,54 @@
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify(feedbackQuery)
       });
-      
+
       const data = await res.json();
-      const feedbackDocs = data.docs || [];
-      
-      // Antwortzähler initialisieren
+      const feedbackDocs = data && Array.isArray(data.docs) ? data.docs : [];
+
       const counts = {};
-      sessionDoc.questions.forEach(question => {
-        counts[question.id] = 0;
-      });
-      
-      // Für jedes Feedback die Antworten zählen
+      sessionDoc.questions.forEach(q => counts[q.id] = 0);
+
       feedbackDocs.forEach(feedback => {
         if (feedback.answers) {
-          // Zähle für jede Frage, die in den Antworten vorkommt
           Object.keys(feedback.answers).forEach(questionId => {
-            if (counts.hasOwnProperty(questionId)) {
-              counts[questionId]++;
-            }
+            if (counts.hasOwnProperty(questionId)) counts[questionId]++;
           });
         }
       });
-      
-      // Aktualisiere die Zähler in der UI
+
       sessionDoc.questions.forEach(question => {
-        const countElement = document.getElementById(`answer-count-${question.id}`);
-        if (countElement) {
-          countElement.textContent = `${counts[question.id]} Antworten`;
-        }
+        const el = document.getElementById(`answer-count-${question.id}`);
+        if (el) el.textContent = `${counts[question.id]} Antworten`;
       });
-      
-      // Speichere die Zähler für später
+
       questionAnswerCounts = counts;
-      
+
     } catch (error) {
       console.error('Fehler beim Zählen der Antworten:', error);
     }
   }
 
-  // Live-Updates über Changes Feed
   function setupLiveFeedbackUpdates() {
     const source = new EventSource(`http://localhost:5984/gmci/_changes?feed=eventsource&since=now&include_docs=true`);
     source.onmessage = event => {
       const change = JSON.parse(event.data);
       const doc = change.doc;
-      
-      if (doc.type === 'feedback' && doc.sessionId === sessionId) {
-        // Aktualisiere die Zähler und Statistiken, sobald neue Feedbacks kommen
-        console.log('Neues Feedback erhalten, aktualisiere Zähler und Statistiken...');
+
+      if (doc && doc.type === 'feedback' && doc.sessionId === sessionId) {
         updateAnswerCounts();
         updateAllStatistics();
       }
-      
-      if (doc.type === 'chat' && doc.sessionId === sessionId) {
+
+      if (doc && doc.type === 'chat' && doc.sessionId === sessionId) {
         addChatMessage(doc.message, !!doc.fromModerator);
       }
     };
   }
 
-  // Initialisiere Live-Updates
   window.onload = () => {
     loadExistingChats();
     loadSession();
-    setupLiveFeedbackUpdates(); // Live-Updates aktivieren
+    setupLiveFeedbackUpdates();
   };
 </script>
 
