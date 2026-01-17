@@ -93,18 +93,37 @@
       user-select: none;
       color: #34495e;
       padding: 5px;
-      border-radius: 4px;
+      border-radius: 6px;
       transition: background-color 0.2s, color 0.2s;
       display: flex;
       align-items: center;
       justify-content: center;
-      width: 28px;
-      height: 28px;
+      width: 30px;
+      height: 30px;
     }
     .icon-button:hover {
       background-color: #bdc3c7;
       color: #2c3e50;
     }
+
+    /* Bunte Buttons (pro Aktion) */
+    .icon-copy { color: #2980b9; }
+    .icon-copy:hover { background-color: #d6eaf8; color: #1f5f8a; }
+
+    .icon-edit { color: #8e44ad; }
+    .icon-edit:hover { background-color: #ebdef0; color: #6c3483; }
+
+    .icon-play { color: #27ae60; }
+    .icon-play:hover { background-color: #d5f5e3; color: #1e8449; }
+
+    .icon-stats { color: #e67e22; }
+    .icon-stats:hover { background-color: #fae5d3; color: #b95d11; }
+
+    .icon-qr { color: #16a085; }
+    .icon-qr:hover { background-color: #d1f2eb; color: #117a65; }
+
+    .icon-delete { color: #c0392b; }
+    .icon-delete:hover { background-color: #f2d7d5; color: #922b21; }
   </style>
 </head>
 <body>
@@ -244,74 +263,142 @@
           const iconsDiv = document.createElement('div');
           iconsDiv.classList.add('icons');
 
-          // Kopier-Icon (🔄) = Session kopieren
+          // Kopier-Icon (klassisch: 2 überlappende Blätter)
           const copyIcon = document.createElement('span');
-          copyIcon.classList.add('icon-button');
+          copyIcon.classList.add('icon-button', 'icon-copy');
           copyIcon.title = 'Session kopieren';
-          copyIcon.textContent = '🔄';
+          copyIcon.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg"
+                 width="18" height="18" viewBox="0 0 24 24"
+                 fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                 aria-hidden="true">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+          `;
           copyIcon.addEventListener('click', (e) => {
             e.stopPropagation();
             copySession(session._id, session.title);
           });
 
-          // Zahnrad Icon (⚙️) = Bearbeiten
+          // Bearbeiten-Icon (Pencil)
           const editIcon = document.createElement('span');
-          editIcon.classList.add('icon-button');
+          editIcon.classList.add('icon-button', 'icon-edit');
           editIcon.title = 'Session bearbeiten';
-          editIcon.textContent = '⚙️';
+          editIcon.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg"
+                 width="18" height="18" viewBox="0 0 24 24"
+                 fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                 aria-hidden="true">
+              <path d="M12 20h9"></path>
+              <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
+            </svg>
+          `;
           editIcon.addEventListener('click', (e) => {
             e.stopPropagation();
             window.location.href = `editSession.html?id=${encodeURIComponent(session._id)}`;
           });
 
-          // Play Icon (▶️) = Starten
+          // Start-Icon (Play circle) + grün
           const playIcon = document.createElement('span');
-          playIcon.classList.add('icon-button');
+          playIcon.classList.add('icon-button', 'icon-play');
           playIcon.title = 'Feedbackrunde starten';
-          playIcon.textContent = '▶️';
+          playIcon.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg"
+                 width="18" height="18" viewBox="0 0 24 24"
+                 fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                 aria-hidden="true">
+              <circle cx="12" cy="12" r="10"></circle>
+              <polygon points="10,8 16,12 10,16"></polygon>
+            </svg>
+          `;
           playIcon.addEventListener('click', (e) => {
             e.stopPropagation();
             const sessionIdEncoded = encodeURIComponent(session._id);
-            
-            // Erstes Fenster öffnen (liveDashboard)
             window.open(`liveDashboard.html?id=${sessionIdEncoded}`, '_blank');
             window.open(`session_Stud.html?id=${sessionIdEncoded}`, '_blank');
           });
 
-          // Auswertungs-Icon
+          // Auswertungs-Icon (Line chart: verständlicher als 3 Balken)
           const statsIcon = document.createElement('span');
-          statsIcon.classList.add('icon-button');
-          statsIcon.textContent = '📊';
+          statsIcon.classList.add('icon-button', 'icon-stats');
           statsIcon.title = 'Auswertung anzeigen';
+          statsIcon.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg"
+                 width="18" height="18" viewBox="0 0 24 24"
+                 fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                 aria-hidden="true">
+              <path d="M3 3v18h18"></path>
+              <path d="M7 14l3-3 4 4 6-6"></path>
+              <circle cx="7" cy="14" r="1"></circle>
+              <circle cx="10" cy="11" r="1"></circle>
+              <circle cx="14" cy="15" r="1"></circle>
+              <circle cx="20" cy="9" r="1"></circle>
+            </svg>
+          `;
           statsIcon.addEventListener('click', e => {
-            e.stopPropagation(); // verhindert dass auch das Anklicken der Session ausgelöst wird
+            e.stopPropagation();
             window.location.href = `auswertung.html?id=${encodeURIComponent(session._id)}`;
           });
 
-
-
-
-          // QR-Code Icon (📱) = QR-Code generieren und herunterladen
+          // QR-Icon (echtes QR-Symbol, typisches Look-and-feel)
           const qrIcon = document.createElement('span');
-          qrIcon.classList.add('icon-button');
+          qrIcon.classList.add('icon-button', 'icon-qr');
           qrIcon.title = 'QR-Code generieren und herunterladen';
-          qrIcon.textContent = '📱';
+          qrIcon.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg"
+                 width="18" height="18" viewBox="0 0 24 24"
+                 fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                 aria-hidden="true">
+              <!-- Finder patterns -->
+              <rect x="3" y="3" width="8" height="8" rx="1"></rect>
+              <rect x="13" y="3" width="8" height="8" rx="1"></rect>
+              <rect x="3" y="13" width="8" height="8" rx="1"></rect>
+              <rect x="6" y="6" width="2" height="2" fill="currentColor" stroke="none"></rect>
+              <rect x="16" y="6" width="2" height="2" fill="currentColor" stroke="none"></rect>
+              <rect x="6" y="16" width="2" height="2" fill="currentColor" stroke="none"></rect>
+
+              <!-- Data modules (stylized) -->
+              <rect x="13" y="13" width="2" height="2" fill="currentColor" stroke="none"></rect>
+              <rect x="17" y="13" width="2" height="2" fill="currentColor" stroke="none"></rect>
+              <rect x="15" y="15" width="2" height="2" fill="currentColor" stroke="none"></rect>
+              <rect x="13" y="17" width="2" height="2" fill="currentColor" stroke="none"></rect>
+              <rect x="19" y="17" width="2" height="2" fill="currentColor" stroke="none"></rect>
+              <rect x="17" y="19" width="2" height="2" fill="currentColor" stroke="none"></rect>
+            </svg>
+          `;
           qrIcon.addEventListener('click', e => {
             e.stopPropagation();
             const url = `https://deineuniseite.edu/session/${encodeURIComponent(session._id)}`;
             downloadQRCode(url, `${session.title}_qrcode.png`);
           });
 
-          // Mülleimer Icon (🗑️) = Löschen
+          // Löschen-Icon (Trash)
           const deleteIcon = document.createElement('span');
-          deleteIcon.classList.add('icon-button');
+          deleteIcon.classList.add('icon-button', 'icon-delete');
           deleteIcon.title = 'Session löschen';
-          deleteIcon.textContent = '🗑️';
+          deleteIcon.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg"
+                 width="18" height="18" viewBox="0 0 24 24"
+                 fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                 aria-hidden="true">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+              <path d="M10 11v6"></path>
+              <path d="M14 11v6"></path>
+              <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path>
+            </svg>
+          `;
           deleteIcon.addEventListener('click', async e => {
             e.stopPropagation();
             if (confirm(`Möchtest du die Session "${session.title}" wirklich löschen? Dies löscht auch alle zugehörigen Feedbacks und Chat-Nachrichten!`)) {
               try {
-                // NEU: Lösche Session mit allen zugehörigen Daten
                 await deleteSessionWithRelatedData(session._id);
                 alert('Session und alle zugehörigen Daten gelöscht!');
                 loadSessions();
